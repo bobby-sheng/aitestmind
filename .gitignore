@@ -1,0 +1,103 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/lib/generated/prisma
+
+# ==========================================
+# 开发文档和临时文件（不需要发布）
+# ==========================================
+
+# AI 知识库目录（所有开发文档已整理到此）
+.ai-knowledge/
+
+# 开发脚本目录
+scripts/dev/
+
+# 开发日志
+dev.log
+logs/
+*.log
+
+# 测试文件
+test-*.js
+test-*.json
+test-*.py
+
+# 临时性脚本（调试、修复、清理等一次性使用的脚本）
+scripts/clean-*.js
+scripts/fix-*.js
+scripts/fix-*.sh
+scripts/check-*.js
+scripts/migrate-*.ts
+scripts/test-*.ts
+
+# 数据库文件（开发和生产）
+# 注意：数据库文件可能包含敏感数据，不应提交到仓库
+
+prisma/dev.db-journal
+prisma/dev.db  # 禁止提交数据库文件（可能包含敏感信息）
+data/*.db
+data/*.db-journal
+*.db-journal
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+
+# GitHub 配置临时文件
+GITHUB_TOPICS_*.txt
+GITHUB_配置指南.md
+
+# Python 虚拟环境
+proxy-server/venv/
+executor/venv/
+**/__pycache__/
+*.pyc

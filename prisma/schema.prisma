@@ -1,0 +1,653 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// API模型 - 存储采集的API接口
+model Api {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 基本信息
+  name        String  // 用户自定义名称
+  description String? // 描述
+  method      String  // HTTP方法：GET, POST, PUT, DELETE等
+  url         String  // 完整URL
+  path        String  // 路径部分
+  domain      String? // 域名
+
+  // ========== 四层分类结构 ==========
+  platform    String? // 平台名称（第1层）
+  component   String? // 组件名称（第2层）
+  feature     String? // 功能名称（第3层）
+  // API动作本身是第4层
+  
+  // 分类和标签（保留原有的简单分类，用于向后兼容）
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags       ApiTag[]
+
+  // ========== API Schema 相关 ==========
+  schema          String? // API Schema JSON字符串（供AI理解参数结构）
+  generatedParams String? // 自动生成的参数填充值 JSON
+  importSource    String  @default("manual") // 导入来源：manual, har
+
+  // 请求信息（JSON格式，自动序列化）
+  requestHeaders String? // 请求头
+  requestQuery   String? // 查询参数
+  requestBody    String? // 请求体
+  requestMimeType String? // 请求Content-Type
+
+  // 响应信息（JSON格式）
+  responseStatus  Int?    // 状态码
+  responseHeaders String?   // 响应头
+  responseBody    String?   // 响应体
+  responseMimeType String? // 响应Content-Type
+
+  // 性能指标
+  responseTime Int? // 响应时间（毫秒）
+  responseSize Int? // 响应大小（字节）
+
+  // 元数据
+  resourceType String? // 资源类型：xhr, fetch, document等
+  startedDateTime String? // 采集时间（ISO格式）
+  
+  // 原始数据（保留完整的HAR entry）
+  rawHarEntry Json?
+
+  // 状态标记
+  isStarred Boolean @default(false) // 是否收藏
+  isArchived Boolean @default(false) // 是否归档
+
+  @@index([categoryId])
+  @@index([method])
+  @@index([domain])
+  @@index([createdAt])
+  @@index([platform])
+  @@index([component])
+  @@index([feature])
+  @@index([importSource])
+}
+
+// 分类模型（旧的，保留向后兼容）
+model Category {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String  @unique // 分类名称
+  description String? // 描述
+  color       String? // 颜色标识（用于UI展示）
+  icon        String? // 图标名称
+  
+  apis Api[]
+
+  @@index([name])
+}
+
+// 四层分类结构表（新的）
+model Classification {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 四层分类
+  platform  String  // 平台（必填）
+  component String? // 组件（可选）
+  feature   String? // 功能（可选）
+  
+  // 描述信息
+  description String?
+  
+  // 唯一约束：platform + component + feature 组合唯一
+  @@unique([platform, component, feature])
+  @@index([platform])
+  @@index([component])
+  @@index([feature])
+}
+
+// 标签模型
+model Tag {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  name  String   @unique // 标签名称
+  color String?  // 颜色标识
+  
+  apis ApiTag[]
+
+  @@index([name])
+}
+
+// API和标签的多对多关系表
+model ApiTag {
+  id    String @id @default(cuid())
+  apiId String
+  tagId String
+
+  api Api @relation(fields: [apiId], references: [id], onDelete: Cascade)
+  tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([apiId, tagId])
+  @@index([apiId])
+  @@index([tagId])
+}
+
+// 测试用例模型 - 用例编排
+model TestCase {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 基本信息
+  name        String  // 用例名称
+  description String? // 用例描述
+  
+  // 状态
+  status String @default("draft") // draft, active, archived
+  
+  // 分类和标签
+  category String? // 分类名称
+  tags     String? // JSON数组格式存储标签
+  
+  // 流程图配置（完整的JSON）
+  flowConfig String // 存储整个流程图的配置（nodes, edges, variables等）
+  
+  // 步骤
+  steps TestStep[]
+  
+  // 关联到测试套件（新增）
+  suites TestSuiteCase[]
+  
+  // 执行统计
+  executeCount Int @default(0) // 执行次数
+  successCount Int @default(0) // 成功次数
+  failCount    Int @default(0) // 失败次数
+  
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+}
+
+// 测试步骤模型
+model TestStep {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联测试用例
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  
+  // 步骤基本信息
+  name        String  // 步骤名称
+  description String? // 步骤描述
+  order       Int     // 步骤顺序（按照连线关系排序）
+  nodeId      String  // 流程图中的节点ID
+  
+  // 关联的API
+  apiId String?
+  
+  // 步骤类型
+  type String // api, wait, assertion等
+  
+  // 步骤配置（JSON格式，包含所有配置项）
+  config String // 包含：requestConfig, responseExtract, assertions, wait等
+  
+  // 位置信息（流程图坐标）
+  positionX Float @default(0)
+  positionY Float @default(0)
+  
+  @@index([testCaseId])
+  @@index([order])
+  @@index([nodeId])
+}
+
+// 平台设置模型
+model PlatformSettings {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 环境配置
+  baseUrl String? // 基础URL，所有API请求都会拼接这个地址
+  
+  // 认证Token模式（Headers键值对）
+  authTokenEnabled Boolean @default(false) // 是否启用认证Token
+  authTokenKey     String? // Token的Header键名（如：Authorization）
+  authTokenValue   String? // Token的值（如：Bearer xxx）
+  
+  // Session模式
+  sessionEnabled       Boolean @default(false) // 是否启用Session模式
+  loginApiUrl          String? // 登录接口URL
+  loginMethod          String? // 登录接口方法（GET, POST等）
+  loginRequestHeaders  Json? // 登录请求头
+  loginRequestBody     Json? // 登录请求体
+  sessionCookies       String? // 所有Session Cookies（自动保存，格式：cookie1=value1; cookie2=value2）
+  sessionUpdatedAt     DateTime? // Session最后更新时间
+  
+  // ============== AI 配置 ==============
+  
+  // AI 服务启用开关
+  aiEnabled Boolean @default(false)
+  
+  // AI 服务提供商：openai, claude, baidu, alibaba, zhipu, ollama
+  aiProvider String @default("openai")
+  
+  // AI 模型
+  aiModel String @default("gpt-4-turbo-preview")
+  
+  // API Key（加密存储）
+  aiApiKey String?
+  
+  // API Base URL（自定义端点，可选）
+  aiBaseUrl String?
+  
+  // 高级配置
+  aiTemperature Float @default(0.7) // 温度参数 0-1
+  aiMaxTokens Int @default(4000) // 最大 Token 数
+  aiTopP Float @default(1.0) // Top P 采样
+  
+  // ============== 请求头过滤配置 ==============
+  
+  // 请求头白名单（采集入库时只保留这些请求头）
+  // 格式：逗号分隔的请求头key列表，如："Authorization,Content-Type,X-Api-Key"
+  allowedHeaders String? // 允许保留的请求头白名单
+  
+  // 其他配置预留字段
+  otherConfig Json? // 其他配置（JSON格式）
+  
+  @@index([updatedAt])
+}
+
+// ==================== 测试套件功能模型 ====================
+
+// 测试套件模型
+model TestSuite {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 基本信息
+  name        String
+  description String?
+  
+  // 状态
+  status String @default("draft") // draft, active, archived
+  
+  // 分类和标签
+  category String?
+  tags     String? // JSON数组格式: ["tag1", "tag2"]
+  
+  // 环境配置
+  useGlobalSettings Boolean @default(true) // true: 使用全局配置, false: 使用独立配置
+  environmentConfig Json? // 结构与PlatformSettings一致
+  
+  // 关联的用例
+  testCases TestSuiteCase[]
+  
+  // 执行历史
+  executions TestSuiteExecution[]
+  
+  // 统计
+  executeCount Int @default(0)
+  successCount Int @default(0)
+  failCount    Int @default(0)
+  
+  // 调度配置
+  executionMode     String    @default("manual") // manual: 手动执行, scheduled: 定时执行
+  scheduleConfig    String? // JSON格式的调度配置
+  scheduleStatus    String? // active: 激活, paused: 暂停, disabled: 禁用
+  nextRunTime       DateTime? // 下次执行时间（由调度器计算）
+  lastScheduledRun  DateTime? // 上次调度执行时间
+  
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@index([executionMode])
+  @@index([scheduleStatus])
+  @@index([nextRunTime])
+}
+
+// 测试套件关联表（多对多）
+model TestSuiteCase {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // 关联测试套件
+  suiteId String
+  suite   TestSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  
+  // 关联用例
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  
+  // 执行配置
+  order   Int     // 执行顺序
+  enabled Boolean @default(true) // 是否启用
+  
+  @@unique([suiteId, testCaseId])
+  @@index([suiteId])
+  @@index([testCaseId])
+  @@index([order])
+}
+
+// 测试套件执行记录
+model TestSuiteExecution {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  startTime DateTime
+  endTime   DateTime?
+
+  // 关联测试套件
+  suiteId   String
+  suite     TestSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  suiteName String // 快照：测试套件名称
+  
+  // 执行状态
+  status String // pending, running, completed, failed, stopped
+  
+  // 执行环境快照（保存执行时的完整环境配置）
+  environmentSnapshot String
+  
+  // 统计信息
+  totalCases   Int
+  passedCases  Int @default(0)
+  failedCases  Int @default(0)
+  skippedCases Int @default(0)
+  
+  totalSteps  Int
+  passedSteps Int @default(0)
+  failedSteps Int @default(0)
+  
+  // 执行时长（毫秒）
+  duration Int?
+  
+  // 执行日志（整体日志）
+  logs String?
+  
+  // 关联的用例执行记录
+  caseExecutions TestCaseExecution[]
+  
+  // 关联的执行日志
+  executionLogs ExecutionLog[]
+  
+  // 执行触发信息
+  triggeredBy String? // manual, schedule, api
+  triggerUser String?
+  
+  @@index([suiteId])
+  @@index([status])
+  @@index([startTime])
+  @@index([createdAt])
+}
+
+// 用例执行记录
+model TestCaseExecution {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  startTime DateTime
+  endTime   DateTime?
+
+  // 关联测试套件执行
+  suiteExecutionId String
+  suiteExecution   TestSuiteExecution @relation(fields: [suiteExecutionId], references: [id], onDelete: Cascade)
+  
+  // 关联用例（保存快照）
+  testCaseId       String
+  testCaseName     String // 快照：用例名称
+  testCaseSnapshot String   // 快照：用例完整配置
+  
+  // 执行状态
+  status String // pending, running, passed, failed, skipped
+  
+  // 执行顺序
+  order Int
+  
+  // 统计信息
+  totalSteps   Int
+  passedSteps  Int @default(0)
+  failedSteps  Int @default(0)
+  skippedSteps Int @default(0)
+  
+  // 执行时长（毫秒）
+  duration Int?
+  
+  // 失败原因
+  errorMessage String?
+  errorStack   String?
+  
+  // 关联的步骤执行记录
+  stepExecutions TestStepExecution[]
+  
+  // 关联的执行日志
+  executionLogs ExecutionLog[]
+  
+  @@index([suiteExecutionId])
+  @@index([testCaseId])
+  @@index([status])
+  @@index([order])
+}
+
+// 步骤执行记录
+model TestStepExecution {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  startTime DateTime
+  endTime   DateTime?
+
+  // 关联用例执行
+  caseExecutionId String
+  caseExecution   TestCaseExecution @relation(fields: [caseExecutionId], references: [id], onDelete: Cascade)
+  
+  // 节点信息（快照）
+  nodeId       String
+  nodeName     String
+  nodeType     String // api, wait, assertion, parallel, condition
+  nodeSnapshot String   // 节点完整配置快照
+  
+  // 执行状态
+  status String // pending, running, success, failed, skipped
+  
+  // 执行顺序
+  order Int
+  
+  // 执行时长（毫秒）
+  duration Int?
+  
+  // 请求信息（API节点）
+  requestUrl     String?
+  requestMethod  String?
+  requestHeaders String?
+  requestBody    String?
+  requestParams  String? // Query和Path参数
+  
+  // 响应信息
+  responseStatus  Int?
+  responseHeaders String?
+  responseBody    String?
+  responseTime    Int? // 响应时间（毫秒）
+  
+  // 断言结果
+  assertionResults String? // 断言详细结果数组
+  
+  // 变量提取结果
+  extractedVariables String? // 提取的变量键值对
+  
+  // 日志
+  logs String?
+  
+  // 失败原因
+  errorMessage String?
+  errorStack   String?
+  
+  // 关联的执行日志
+  executionLogs ExecutionLog[]
+  
+  @@index([caseExecutionId])
+  @@index([nodeId])
+  @@index([status])
+  @@index([order])
+}
+
+// 执行日志表（独立存储，避免单条记录过大）
+model ExecutionLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  timestamp DateTime @default(now()) // 日志产生时间
+  
+  // 关联到步骤执行（可选，因为也可能是用例级别或套件级别的日志）
+  stepExecutionId String?
+  stepExecution   TestStepExecution? @relation(fields: [stepExecutionId], references: [id], onDelete: Cascade)
+  
+  // 关联到用例执行（可选）
+  caseExecutionId String?
+  caseExecution   TestCaseExecution? @relation(fields: [caseExecutionId], references: [id], onDelete: Cascade)
+  
+  // 关联到测试套件执行（可选）
+  suiteExecutionId String?
+  suiteExecution   TestSuiteExecution? @relation(fields: [suiteExecutionId], references: [id], onDelete: Cascade)
+  
+  // 日志级别
+  level String // info, warning, error, debug, success
+  
+  // 日志类型
+  type String? // request, response, assertion, variable, system, error
+  
+  // 日志内容（清理后的纯文本）
+  message String
+  
+  // 详细数据（可选的 JSON 格式，如请求响应详情）
+  details Json?
+  
+  // 节点信息（用于快速查询）
+  nodeId   String?
+  nodeName String?
+  
+  @@index([stepExecutionId])
+  @@index([caseExecutionId])
+  @@index([suiteExecutionId])
+  @@index([timestamp])
+  @@index([level])
+  @@index([nodeId])
+}
+
+// ==================== AI 对话功能模型 ====================
+
+// AI对话会话模型
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 对话标题（自动从第一条消息生成或用户自定义）
+  title String
+  
+  // 对话摘要（可选）
+  summary String?
+  
+  // 对话消息
+  messages ConversationMessage[]
+  
+  // 是否收藏
+  isStarred Boolean @default(false)
+  
+  // 是否归档
+  isArchived Boolean @default(false)
+  
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([isStarred])
+  @@index([isArchived])
+}
+
+// AI对话消息模型
+model ConversationMessage {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // 关联对话
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  // 消息角色：user / assistant / system
+  role String
+  
+  // 消息内容
+  content String
+  
+  // 消息元数据（可选，JSON格式）
+  metadata Json?
+  
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+// ==================== 用户管理功能模型 ====================
+
+// 用户模型
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 用户名（唯一）
+  username String @unique
+  
+  // 密码（加密存储）
+  password String
+  
+  // 邮箱（可选）
+  email String?
+  
+  // 真实姓名
+  realName String?
+  
+  // 角色：admin, user
+  role String @default("user")
+  
+  // 状态：active, inactive
+  status String @default("active")
+  
+  // 最后登录时间
+  lastLoginAt DateTime?
+  
+  @@index([username])
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Session 模型（用于存储登录会话）
+model Session {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联用户
+  userId String
+  
+  // Session Token
+  token String @unique
+  
+  // 过期时间
+  expiresAt DateTime
+  
+  // IP 地址
+  ipAddress String?
+  
+  // User Agent
+  userAgent String?
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}

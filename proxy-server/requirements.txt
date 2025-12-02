@@ -1,0 +1,10 @@
+# mitmproxy 代理服务器依赖
+
+# 核心依赖
+mitmproxy>=10.1.0
+Flask>=3.0.0
+flask-cors>=4.0.0
+
+# 可选依赖
+requests>=2.31.0
+

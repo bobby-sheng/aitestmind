@@ -1,0 +1,132 @@
+# ================================
+# AI TestMind - All-in-One Dockerfile
+# 前端 + 执行器 单镜像部署
+# 包含自动数据库初始化和测试数据
+# 国内网络环境优化版
+# ================================
+
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app
+
+# 配置 npm 使用淘宝镜像
+RUN npm config set registry https://registry.npmmirror.com
+
+# 复制前端依赖清单
+COPY package.json package-lock.json* ./
+
+# 安装所有依赖（使用国内镜像源）
+RUN npm ci --registry=https://registry.npmmirror.com
+
+# 复制前端代码
+COPY . .
+
+# 生成 Prisma Client
+# 临时设置 DATABASE_URL 用于构建
+ENV DATABASE_URL="file:/tmp/build.db"
+RUN npx prisma generate
+
+# 构建 Next.js 应用
+# 支持构建时传入 NEXT_PUBLIC_EXECUTOR_URL
+ARG NEXT_PUBLIC_EXECUTOR_URL
+ENV NEXT_PUBLIC_EXECUTOR_URL=${NEXT_PUBLIC_EXECUTOR_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+RUN npm run build
+
+# ================================
+# 最终镜像：包含 Node.js + Python
+# 使用 Debian-based 镜像，pip 直接安装预编译包，无需编译
+# ================================
+FROM node:20-slim
+
+WORKDIR /app
+
+# 配置 apt 使用国内镜像源
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
+
+# 安装 Python 和系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    sqlite3 \
+    lsof \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建非 root 用户（需要 home 目录用于 mitmproxy 证书存储）
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs --create-home nextjs && \
+    mkdir -p /home/nextjs/.mitmproxy && \
+    chown -R nextjs:nodejs /home/nextjs
+
+# 复制前端构建产物
+COPY --from=frontend-builder /app/public ./public
+COPY --from=frontend-builder /app/.next/standalone ./
+COPY --from=frontend-builder /app/.next/static ./.next/static
+
+# 复制 Prisma 相关文件（数据库初始化需要）
+COPY --from=frontend-builder /app/prisma ./prisma
+COPY --from=frontend-builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=frontend-builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# 安装 prisma CLI（用于数据库初始化）
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install -g prisma@6.19.0
+
+# 复制初始化脚本
+COPY scripts ./scripts
+
+# 复制执行器代码
+COPY executor ./executor
+
+# 复制代理服务器代码（mitmproxy 录制器）
+COPY proxy-server ./proxy-server
+
+# 安装 Python 依赖（使用阿里云 pip 镜像）
+# Debian 系统使用 --break-system-packages 或虚拟环境
+# 安装 executor 依赖
+RUN pip3 install --no-cache-dir --break-system-packages \
+    -r executor/requirements.txt \
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com
+
+# 安装 proxy-server 依赖（包含 mitmproxy，预编译 wheel 秒装）
+RUN pip3 install --no-cache-dir --break-system-packages \
+    -r proxy-server/requirements.txt \
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com
+
+# 创建数据和日志目录，设置整个项目目录的权限
+RUN mkdir -p /app/data /app/logs /app/executor/logs && \
+    chown -R nextjs:nodejs /app
+
+# 复制 Docker 脚本
+COPY docker/init-db.sh /app/docker/init-db.sh
+COPY docker/start-all.sh /start-all.sh
+RUN chmod +x /app/docker/init-db.sh /start-all.sh
+
+# 注意：不切换用户，保持 root 权限以便处理挂载目录的权限问题
+# 启动脚本会在运行时切换到 nextjs 用户
+# USER nextjs
+
+# 暴露端口
+# 3000: Next.js 前端
+# 8001: Python 执行器
+# 8899: mitmproxy 代理服务
+EXPOSE 3000 8001 8899
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health && curl -f http://localhost:8001/health || exit 1
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV DATABASE_URL="file:/app/prisma/dev.db"
+ENV EXECUTOR_URL="http://localhost:8001"
+
+# 启动前端和执行器
+CMD ["/start-all.sh"]

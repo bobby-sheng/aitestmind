@@ -1,0 +1,39 @@
+version: '3.8'
+
+# ================================
+# AI TestMind - All-in-One 配置
+# 单镜像部署：前端 + 执行器
+# ================================
+
+services:
+  aitestmind:
+    build:
+      context: .
+      dockerfile: Dockerfile.all-in-one
+    image: ${DOCKER_REGISTRY:-docker.io}/${DOCKER_USERNAME:-yourname}/aitestmind-all-in-one:${VERSION:-latest}
+    container_name: aitestmind-all-in-one
+    ports:
+      - "3000:3000"  # 前端端口
+      - "8001:8001"  # 执行器端口
+      - "8899:8899"  # mitmproxy 代理端口（API 采集）
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - EXECUTOR_URL=${EXECUTOR_URL:-http://localhost:8001}
+      - PYTHONUNBUFFERED=1
+      # 可通过 .env 文件或环境变量自定义配置
+    volumes:
+      - ./prisma:/app/prisma
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - aitestmind-network
+
+networks:
+  aitestmind-network:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
+

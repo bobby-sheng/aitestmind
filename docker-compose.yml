@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # 前端应用
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-docker.io}/${DOCKER_USERNAME:-yourname}/aitestmind-frontend:${VERSION:-latest}
+    container_name: aitestmind-frontend
+    ports:
+      - "3000:3000"
+      - "8899:8899"  # mitmproxy 代理端口（API 采集）
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - EXECUTOR_URL=http://executor:8001
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - executor
+    restart: unless-stopped
+    networks:
+      - aitestmind-network
+
+  # 执行器服务
+  executor:
+    build:
+      context: ./executor
+      dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-docker.io}/${DOCKER_USERNAME:-yourname}/aitestmind-executor:${VERSION:-latest}
+    container_name: aitestmind-executor
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=file:/app/prisma/dev.db
+    volumes:
+      - ./data:/app/data
+      - ./executor/logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - aitestmind-network
+
+networks:
+  aitestmind-network:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
+

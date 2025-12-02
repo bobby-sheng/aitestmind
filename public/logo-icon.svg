@@ -1,0 +1,66 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- AI TestMind Icon - Compact Version -->
+  <defs>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A78BFA;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#8B5CF6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6366F1;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="iconSecondary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 外圈 -->
+  <circle cx="32" cy="32" r="28" fill="none" stroke="url(#iconGradient)" stroke-width="1.5" opacity="0.3"/>
+  
+  <!-- 中央大脑形状 -->
+  <g>
+    <circle cx="32" cy="32" r="15" fill="url(#iconGradient)" opacity="0.15"/>
+    
+    <path d="M 24 28 Q 22 23, 26 20 Q 30 18, 32 22 Q 34 18, 38 20 Q 42 23, 40 28 
+             Q 42 33, 40 36 Q 38 41, 34 40 Q 32 43, 30 40 Q 26 41, 24 36 Q 22 33, 24 28 Z" 
+          fill="url(#iconGradient)" 
+          opacity="0.9"
+          stroke="url(#iconSecondary)"
+          stroke-width="1.2"/>
+    
+    <!-- 神经节点 -->
+    <circle cx="26" cy="27" r="2" fill="#A78BFA"/>
+    <circle cx="32" cy="25" r="2.5" fill="#8B5CF6"/>
+    <circle cx="38" cy="27" r="2" fill="#6366F1"/>
+    <circle cx="28" cy="35" r="1.8" fill="#60A5FA" opacity="0.9"/>
+    <circle cx="36" cy="35" r="1.8" fill="#3B82F6" opacity="0.9"/>
+    
+    <!-- 连接线 -->
+    <line x1="26" y1="27" x2="32" y2="25" stroke="#A78BFA" stroke-width="1" opacity="0.5"/>
+    <line x1="32" y1="25" x2="38" y2="27" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    <line x1="26" y1="27" x2="28" y2="35" stroke="#6366F1" stroke-width="1" opacity="0.5"/>
+    <line x1="38" y1="27" x2="36" y2="35" stroke="#60A5FA" stroke-width="1" opacity="0.5"/>
+  </g>
+  
+  <!-- 流程线条 -->
+  <g opacity="0.85">
+    <path d="M 16 46 Q 24 44, 32 46 Q 40 48, 48 46" 
+          stroke="url(#iconGradient)" 
+          stroke-width="2.5" 
+          stroke-linecap="round"
+          fill="none"/>
+    <path d="M 18 51 Q 26 49, 34 51 Q 40 53, 46 51" 
+          stroke="url(#iconSecondary)" 
+          stroke-width="2" 
+          stroke-linecap="round"
+          fill="none"
+          opacity="0.7"/>
+  </g>
+  
+  <!-- 箭头 -->
+  <path d="M 46 46 L 50 46 L 48 44 M 50 46 L 48 48" 
+        stroke="#6366F1" 
+        stroke-width="2" 
+        stroke-linecap="round"
+        fill="none"
+        opacity="0.9"/>
+</svg>

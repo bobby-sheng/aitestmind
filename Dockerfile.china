@@ -1,0 +1,109 @@
+# ================================
+# AI TestMind - All-in-One Dockerfile (国内优化版)
+# 前端 + 执行器 单镜像部署
+# 针对国内网络环境优化
+# ================================
+
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app
+
+# 配置 npm 使用淘宝镜像
+RUN npm config set registry https://registry.npmmirror.com
+
+# 复制前端依赖清单
+COPY package.json package-lock.json* ./
+
+# 安装所有依赖（使用国内镜像源）
+RUN npm ci --registry=https://registry.npmmirror.com
+
+# 复制前端代码
+COPY . .
+
+# 生成 Prisma Client
+# 临时设置 DATABASE_URL 用于构建
+ENV DATABASE_URL="file:/tmp/build.db"
+RUN npx prisma generate
+
+# 构建 Next.js 应用
+# 支持构建时传入 NEXT_PUBLIC_EXECUTOR_URL（浏览器访问执行器的地址）
+ARG NEXT_PUBLIC_EXECUTOR_URL
+ENV NEXT_PUBLIC_EXECUTOR_URL=${NEXT_PUBLIC_EXECUTOR_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+RUN npm run build
+
+# ================================
+# 最终镜像：包含 Node.js + Python
+# ================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 配置 Alpine 使用国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+# 安装 Python 和系统依赖
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    curl \
+    bash \
+    sqlite
+
+# 创建非 root 用户
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# 复制前端构建产物
+COPY --from=frontend-builder /app/public ./public
+COPY --from=frontend-builder /app/.next/standalone ./
+COPY --from=frontend-builder /app/.next/static ./.next/static
+
+# 复制 Prisma 相关文件（数据库初始化需要）
+COPY --from=frontend-builder /app/prisma ./prisma
+COPY --from=frontend-builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=frontend-builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# 复制初始化脚本
+COPY scripts ./scripts
+
+# 复制执行器代码
+COPY executor ./executor
+
+# 安装 Python 依赖（使用阿里云 pip 镜像）
+# --break-system-packages 用于 Alpine Linux 3.18+ 的 pip 安装
+RUN cd executor && \
+    pip3 install --no-cache-dir --break-system-packages \
+    -r requirements.txt \
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com
+
+# 创建数据和日志目录
+RUN mkdir -p /app/data /app/logs /app/executor/logs && \
+    chown -R nextjs:nodejs /app/data /app/logs /app/executor/logs
+
+# 复制 Docker 脚本
+COPY docker/init-db.sh /app/docker/init-db.sh
+COPY docker/start-all.sh /start-all.sh
+RUN chmod +x /app/docker/init-db.sh /start-all.sh
+
+# 注意：不切换用户，保持 root 权限以便处理挂载目录的权限问题
+# 启动脚本会在运行时切换到 nextjs 用户
+# USER nextjs
+
+# 暴露端口
+EXPOSE 3000 8001
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health && curl -f http://localhost:8001/health || exit 1
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV DATABASE_URL="file:/app/prisma/dev.db"
+ENV EXECUTOR_URL="http://localhost:8001"
+
+# 启动前端和执行器
+CMD ["/start-all.sh"]
+

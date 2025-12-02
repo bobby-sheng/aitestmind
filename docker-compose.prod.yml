@@ -1,0 +1,93 @@
+version: '3.8'
+
+# ================================
+# AI TestMind - 生产环境配置
+# 使用预构建的 Docker 镜像
+# ================================
+
+services:
+  aitestmind:
+    # 使用 GitHub Container Registry 镜像
+    # 也可以使用 Docker Hub: yourusername/aitestmind-all-in-one:latest
+    image: ghcr.io/bobby-sheng/aitestmind-all-in-one:latest
+    
+    container_name: aitestmind-prod
+    
+    ports:
+      - "3000:3000"  # 前端端口
+      - "8001:8001"  # 执行器端口
+      - "8899:8899"  # mitmproxy 代理端口（API 采集）
+    
+    environment:
+      # 基础配置
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/dev.db
+      - EXECUTOR_URL=http://localhost:8001
+      - PYTHONUNBUFFERED=1
+      
+      # AI 提供商配置（可选）
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      
+      # DeepSeek
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      
+      # Claude
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      
+      # 百度文心一言
+      - BAIDU_API_KEY=${BAIDU_API_KEY:-}
+      - BAIDU_SECRET_KEY=${BAIDU_SECRET_KEY:-}
+      
+      # 阿里通义千问
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      
+      # Ollama（本地部署）
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      
+    volumes:
+      # 数据持久化
+      - ./data:/app/data
+      - ./logs:/app/logs
+    
+    restart: unless-stopped
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health", "&&", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    networks:
+      - aitestmind-network
+
+networks:
+  aitestmind-network:
+    driver: bridge
+
+# 数据卷（可选）
+# 如果不使用绑定挂载，可以使用命名卷
+# volumes:
+#   aitestmind-data:
+#   aitestmind-logs:

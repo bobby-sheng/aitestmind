@@ -1,0 +1,43 @@
+# Git 属性配置文件
+# 确保跨平台一致性
+
+# 自动检测文本文件并进行换行符归一化
+* text=auto
+
+# 源代码文件
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# 配置文件
+.gitignore text eol=lf
+.gitattributes text eol=lf
+*.config.* text eol=lf
+
+# Shell 脚本
+*.sh text eol=lf
+
+# 二进制文件
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.db binary
+
+# 语言统计排除
+prisma/migrations/* linguist-vendored
+node_modules/* linguist-vendored
+lib/generated/* linguist-generated
+

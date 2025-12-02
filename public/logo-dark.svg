@@ -1,0 +1,94 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- AI TestMind Logo - Dark Version -->
+  <defs>
+    <!-- 主渐变 - 更亮的紫蓝色 -->
+    <linearGradient id="primaryGradientDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#C4B5FD;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#A78BFA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#818CF8;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 次要渐变 - 更亮的蓝青色 -->
+    <linearGradient id="secondaryGradientDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#93C5FD;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#60A5FA;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 发光效果 -->
+    <filter id="glowDark">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- 外圈装饰环 -->
+  <circle cx="60" cy="60" r="52" fill="none" stroke="url(#primaryGradientDark)" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="60" cy="60" r="56" fill="none" stroke="url(#secondaryGradientDark)" stroke-width="1" opacity="0.3"/>
+  
+  <!-- 中央大脑/芯片融合图形 -->
+  <g filter="url(#glowDark)">
+    <!-- 核心圆形 -->
+    <circle cx="60" cy="60" r="28" fill="url(#primaryGradientDark)" opacity="0.2"/>
+    
+    <!-- 抽象大脑形状 -->
+    <path d="M 45 50 Q 42 42, 48 38 Q 54 36, 60 40 Q 66 36, 72 38 Q 78 42, 75 50 
+             Q 78 58, 75 64 Q 72 72, 66 70 Q 60 74, 54 70 Q 48 72, 45 64 Q 42 58, 45 50 Z" 
+          fill="url(#primaryGradientDark)" 
+          opacity="1"
+          stroke="url(#secondaryGradientDark)"
+          stroke-width="2"/>
+    
+    <!-- 神经节点 -->
+    <circle cx="48" cy="48" r="3.5" fill="#C4B5FD" opacity="1"/>
+    <circle cx="60" cy="45" r="4" fill="#A78BFA" opacity="1"/>
+    <circle cx="72" cy="48" r="3.5" fill="#818CF8" opacity="1"/>
+    <circle cx="52" cy="62" r="3" fill="#93C5FD" opacity="0.9"/>
+    <circle cx="68" cy="62" r="3" fill="#60A5FA" opacity="0.9"/>
+    
+    <!-- 连接线 -->
+    <line x1="48" y1="48" x2="60" y2="45" stroke="#C4B5FD" stroke-width="1.8" opacity="0.7"/>
+    <line x1="60" y1="45" x2="72" y2="48" stroke="#A78BFA" stroke-width="1.8" opacity="0.7"/>
+    <line x1="48" y1="48" x2="52" y2="62" stroke="#818CF8" stroke-width="1.8" opacity="0.7"/>
+    <line x1="72" y1="48" x2="68" y2="62" stroke="#93C5FD" stroke-width="1.8" opacity="0.7"/>
+    <line x1="52" y1="62" x2="68" y2="62" stroke="#60A5FA" stroke-width="1.8" opacity="0.7"/>
+  </g>
+  
+  <!-- 流程指示线条 (下方) -->
+  <g opacity="0.95">
+    <path d="M 30 82 Q 45 78, 60 82 Q 75 86, 90 82" 
+          stroke="url(#primaryGradientDark)" 
+          stroke-width="3.5" 
+          stroke-linecap="round"
+          fill="none"/>
+    <path d="M 35 88 Q 50 84, 65 88 Q 80 92, 85 88" 
+          stroke="url(#secondaryGradientDark)" 
+          stroke-width="3" 
+          stroke-linecap="round"
+          fill="none"
+          opacity="0.8"/>
+    <path d="M 40 94 Q 55 90, 70 94 Q 75 96, 80 94" 
+          stroke="url(#primaryGradientDark)" 
+          stroke-width="2.5" 
+          stroke-linecap="round"
+          fill="none"
+          opacity="0.6"/>
+  </g>
+  
+  <!-- 流程箭头 -->
+  <g opacity="1">
+    <path d="M 85 82 L 92 82 L 89 79 M 92 82 L 89 85" 
+          stroke="#818CF8" 
+          stroke-width="2.5" 
+          stroke-linecap="round"
+          fill="none"/>
+  </g>
+  
+  <!-- 装饰性火花/光点 -->
+  <circle cx="35" cy="35" r="2" fill="#C4B5FD" opacity="0.8"/>
+  <circle cx="85" cy="35" r="2.5" fill="#93C5FD" opacity="0.9"/>
+  <circle cx="25" cy="60" r="2" fill="#A78BFA" opacity="0.7"/>
+  <circle cx="95" cy="60" r="2" fill="#60A5FA" opacity="0.8"/>
+</svg>
