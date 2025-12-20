@@ -12,8 +12,13 @@ export class OpenAIClient extends AIClient {
   constructor(config: AIConfig) {
     super(config);
 
+    // Ollama 不需要真实的 API Key，使用占位符即可
+    const apiKey = config.provider === 'ollama' && !config.apiKey 
+      ? 'ollama' 
+      : config.apiKey;
+
     this.openai = new OpenAI({
-      apiKey: config.apiKey,
+      apiKey: apiKey,
       baseURL: config.baseUrl || 'https://api.openai.com/v1',
     });
   }
@@ -78,7 +83,7 @@ export class OpenAIClient extends AIClient {
       // 转换响应格式
       return {
         content: message.content,
-        toolCalls: message.tool_calls?.map(tc => ({
+        toolCalls: message.tool_calls?.filter((tc): tc is any => tc.type === 'function').map(tc => ({
           id: tc.id,
           function: {
             name: tc.function.name,
@@ -92,16 +97,18 @@ export class OpenAIClient extends AIClient {
         },
       };
     } catch (error: any) {
-      // 处理 OpenAI 特定的错误
+      // 处理特定错误
       if (error.status === 401) {
-        throw new Error('OpenAI API Key 无效或已过期');
+        throw new Error(`${this.config.provider.toUpperCase()} API Key 无效或已过期`);
       } else if (error.status === 429) {
-        throw new Error('OpenAI API 请求频率超限，请稍后再试');
+        throw new Error(`${this.config.provider.toUpperCase()} API 请求频率超限，请稍后再试`);
       } else if (error.status === 500) {
-        throw new Error('OpenAI 服务器错误，请稍后再试');
+        throw new Error(`${this.config.provider.toUpperCase()} 服务器错误，请稍后再试`);
+      } else if (error.code === 'ECONNREFUSED') {
+        throw new Error(`无法连接到 ${this.config.provider.toUpperCase()} 服务 (${this.config.baseUrl})，请确保服务正在运行`);
       }
 
-      throw new Error(`OpenAI API 调用失败: ${error.message}`);
+      throw new Error(`${this.config.provider.toUpperCase()} API 调用失败: ${error.message}`);
     }
   }
 }

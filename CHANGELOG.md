@@ -8,13 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- New features coming soon
+- Ollama 完整配置文档（docs/user-guide/08_OLLAMA_SETUP.md）
+- 国际化提示优化，增加 Ollama 配置说明
 
 ### Changed
 - Improvements in progress
 
 ### Fixed
-- Bug fixes pending
+- 🔧 **修复 Ollama 本地模型适配器无法连接的问题**
+  - Ollama 现在使用 OpenAI 兼容客户端（支持 OpenAI API 格式）
+  - 自动设置默认 baseURL 为 `http://localhost:11434/v1`
+  - Ollama 不需要真实 API Key，使用占位符即可
+  - 改进错误提示，更清晰地显示连接失败原因（ECONNREFUSED）
 
 ## [1.0.0] - 2025-11-29
 

@@ -1093,6 +1093,14 @@
       "testLogin": "Test Login and Get Session",
       "testing": "Testing..."
     },
+    "headerFilter": {
+      "title": "Request Header Filter Configuration",
+      "description": "Configure the whitelist of request headers to retain when capturing APIs. Only whitelisted headers will be saved to the repository",
+      "allowedHeaders": "Allowed Headers",
+      "allowedHeadersPlaceholder": "Authorization, Content-Type, X-Api-Key, X-Request-Id",
+      "allowedHeadersHint": "Enter allowed header names, separated by commas. Leave empty to retain all headers.",
+      "exampleTitle": "Example:"
+    },
     "ai": {
       "title": "✨ AI Smart Generation Configuration",
       "description": "Configure AI large model for intelligent test case generation",
@@ -1110,13 +1118,13 @@
       },
       "model": "AI Model",
       "modelPlaceholder": "gpt-4-turbo-preview",
-      "modelHint": "Enter model name, e.g.: gpt-4-turbo-preview, deepseek-chat, etc.",
+      "modelHint": "Enter model name, e.g.: gpt-4-turbo-preview, deepseek-chat, qwen2.5:7b (Ollama), etc.",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "Enter your API Key",
-      "apiKeyHint": "API Key will be encrypted and stored securely",
+      "apiKeyHint": "API Key will be encrypted and stored securely. For Ollama, enter any value (e.g.: ollama)",
       "baseUrl": "API Base URL (Optional)",
       "baseUrlPlaceholder": "https://api.openai.com/v1",
-      "baseUrlHint": "Modify this if using a proxy or custom endpoint",
+      "baseUrlHint": "For Ollama: http://localhost:11434/v1 or custom port. For others: leave empty or use proxy address",
       "advancedSettings": "Advanced Settings",
       "temperature": "Temperature",
       "temperatureHint": "Higher values = more random, lower values = more deterministic. Recommended: 0.7",

@@ -115,8 +115,15 @@ export function createAIClient(config: AIConfig): AIClient {
   switch (config.provider) {
     case 'openai':
     case 'deepseek':
-      // OpenAI 和 DeepSeek 使用相同的客户端（API 格式兼容）
+    case 'ollama':
+      // OpenAI、DeepSeek 和 Ollama 使用相同的客户端（API 格式兼容）
       const { OpenAIClient } = require('./ai-providers/openai-client');
+      
+      // 为 Ollama 设置默认的 baseURL
+      if (config.provider === 'ollama' && !config.baseUrl) {
+        config.baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1';
+      }
+      
       return new OpenAIClient(config);
     
     // 其他提供商暂时返回基础类
@@ -124,7 +131,6 @@ export function createAIClient(config: AIConfig): AIClient {
     case 'baidu':
     case 'alibaba':
     case 'zhipu':
-    case 'ollama':
       return new AIClient(config);
     
     default:
