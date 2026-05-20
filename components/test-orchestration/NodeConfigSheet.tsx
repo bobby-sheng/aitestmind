@@ -13,9 +13,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FlowNode, ApiNodeData, ParallelNodeData, ApiInfo, ParamValue, PathParams } from '@/types/test-case';
+import { FlowNode, ApiNodeData, ParallelNodeData, ApiInfo, ParamValue, PathParams, ContentType } from '@/types/test-case';
+import { REQUEST_BODY_TYPES, getBodyTypeFromMimeType, RequestBodyType } from '@/types/api-library';
 import { parsePathParams, buildActualUrl, buildFullUrl } from '@/lib/utils/url-parser';
 import JsonEditorWithVariables from './JsonEditorWithVariables';
+import FormDataEditor from './FormDataEditor';
 import AssertionConfig from './AssertionConfig';
 import WaitConfig from './WaitConfig';
 import ParallelConfig from './ParallelConfig';
@@ -59,6 +61,7 @@ export default function NodeConfigSheet({
   const [headers, setHeaders] = useState<Record<string, ParamValue>>({});
   const [body, setBody] = useState<Record<string, any>>({});
   const [bodyJsonText, setBodyJsonText] = useState<string>('{}'); // JSON 文本
+  const [contentType, setContentType] = useState<ContentType>('json'); // 请求体内容类型
   const [showVarSelector, setShowVarSelector] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>('');
 
@@ -81,11 +84,13 @@ export default function NodeConfigSheet({
       const savedQueryParams = data.requestConfig?.queryParams || {};
       const savedHeaders = data.requestConfig?.headers || {};
       const savedBody = data.requestConfig?.body || {};
+      const savedContentType = data.requestConfig?.contentType || 'json';
       
       setPathParams(savedPathParams);
       setQueryParams(savedQueryParams);
       setHeaders(savedHeaders);
       setBody(savedBody);
+      setContentType(savedContentType);
 
       // 初始化 bodyJsonText
       // 递归转换嵌套的 ParamValue 结构为 JSON 显示格式
@@ -203,6 +208,27 @@ export default function NodeConfigSheet({
 
         setApiInfo(processedApiInfo);
         
+        // 如果没有已保存的 contentType，从 API 的 requestMimeType 或请求头中初始化
+        if (!nodeData.requestConfig?.contentType) {
+          let detectedMimeType = apiData.requestMimeType;
+          
+          // 如果 requestMimeType 为空，尝试从请求头中获取 Content-Type
+          if (!detectedMimeType && processedApiInfo.requestHeaders) {
+            detectedMimeType = processedApiInfo.requestHeaders['Content-Type'] || 
+                              processedApiInfo.requestHeaders['content-type'];
+          }
+          
+          if (detectedMimeType) {
+            const detectedContentType = getBodyTypeFromMimeType(detectedMimeType) as ContentType;
+            console.log('🔍 [ContentType 初始化]', {
+              detectedMimeType,
+              detectedContentType,
+              isValidContentType: ['json', 'form-data', 'x-www-form-urlencoded', 'raw', 'none'].includes(detectedContentType),
+            });
+            setContentType(detectedContentType);
+          }
+        }
+        
         // 从 URL 中解析查询参数
         const urlQueryParams = parseUrlQueryParams(apiData.path);
         console.log('从 URL 解析出的查询参数:', urlQueryParams);
@@ -260,70 +286,100 @@ export default function NodeConfigSheet({
         }
 
         // 自动填充请求体（如果已保存的配置为空）
+        console.log('🔍 [Body初始化] 检查条件:', {
+          hasRequestBody: !!processedApiInfo.requestBody,
+          requestBody: processedApiInfo.requestBody,
+          savedBodyEmpty: Object.keys(savedBody).length === 0,
+          requestMimeType: apiData.requestMimeType,
+        });
+        
         if (processedApiInfo.requestBody && Object.keys(savedBody).length === 0) {
           const initialBody: Record<string, ParamValue> = {};
           
-          // 递归填充嵌套对象
-          const fillBodyRecursive = (obj: any, prefix: string = '') => {
-            // 🔧 处理空对象：保留空对象结构
-            if (typeof obj === 'object' && obj !== null && !Array.isArray(obj) && Object.keys(obj).length === 0) {
-              initialBody[prefix || 'root'] = {
-                valueType: 'fixed',
-                value: {} as object,
-              };
-              return;
-            }
-            
-            // 🔧 处理空数组：保留空数组结构
-            if (Array.isArray(obj) && obj.length === 0) {
-              initialBody[prefix || 'root'] = {
-                valueType: 'fixed',
-                value: [] as any[],
-              };
-              return;
-            }
-            
-            Object.entries(obj).forEach(([key, value]) => {
-              const fullKey = prefix ? `${prefix}.${key}` : key;
-              
-              // 如果是简单类型，直接填充
-              if (typeof value !== 'object' || value === null) {
-                initialBody[fullKey] = {
-                  valueType: 'fixed',
-                  value: value as string | number | boolean,
-                };
-              }
-              // 如果是对象（非数组），递归处理
-              else if (!Array.isArray(value)) {
-                // 🔧 空对象特殊处理
-                if (Object.keys(value).length === 0) {
-                  initialBody[fullKey] = {
-                    valueType: 'fixed',
-                    value: {} as object,
-                  };
-                } else {
-                  fillBodyRecursive(value, fullKey);
-                }
-              }
-              // 数组类型处理
-              else {
-                // 🔧 空数组特殊处理
-                if ((value as any[]).length === 0) {
-                  initialBody[fullKey] = {
-                    valueType: 'fixed',
-                    value: [] as any[],
-                  };
-                } else {
-                  initialBody[fullKey] = {
-                    valueType: 'fixed',
-                    value: JSON.stringify(value),
-                  };
-                }
-              }
-            });
-          };
+          // 获取当前确定的 contentType（与上面的逻辑保持一致）
+          let detectedMimeType = apiData.requestMimeType;
+          if (!detectedMimeType && processedApiInfo.requestHeaders) {
+            detectedMimeType = processedApiInfo.requestHeaders['Content-Type'] || 
+                              processedApiInfo.requestHeaders['content-type'];
+          }
+          const currentContentType = nodeData.requestConfig?.contentType || 
+            (detectedMimeType ? getBodyTypeFromMimeType(detectedMimeType) : 'json');
           
-          fillBodyRecursive(processedApiInfo.requestBody);
+          console.log('🔍 [Body初始化] 确定的 contentType:', currentContentType, '(mimeType:', detectedMimeType, ')');
+          
+          // 🔧 对于 form-data 和 x-www-form-urlencoded，使用扁平结构
+          if (currentContentType === 'form-data' || currentContentType === 'x-www-form-urlencoded') {
+            // 扁平化填充，不递归嵌套
+            Object.entries(processedApiInfo.requestBody).forEach(([key, value]) => {
+              initialBody[key] = {
+                valueType: 'fixed',
+                value: typeof value === 'object' ? JSON.stringify(value) : value as string | number | boolean,
+              };
+            });
+            console.log('🔍 [Body初始化] form-data/urlencoded 初始化 body（扁平结构）:', initialBody);
+          } else {
+            // JSON 和其他类型：递归填充嵌套对象
+            const fillBodyRecursive = (obj: any, prefix: string = '') => {
+              // 🔧 处理空对象：保留空对象结构
+              if (typeof obj === 'object' && obj !== null && !Array.isArray(obj) && Object.keys(obj).length === 0) {
+                initialBody[prefix || 'root'] = {
+                  valueType: 'fixed',
+                  value: {} as object,
+                };
+                return;
+              }
+              
+              // 🔧 处理空数组：保留空数组结构
+              if (Array.isArray(obj) && obj.length === 0) {
+                initialBody[prefix || 'root'] = {
+                  valueType: 'fixed',
+                  value: [] as any[],
+                };
+                return;
+              }
+              
+              Object.entries(obj).forEach(([key, value]) => {
+                const fullKey = prefix ? `${prefix}.${key}` : key;
+                
+                // 如果是简单类型，直接填充
+                if (typeof value !== 'object' || value === null) {
+                  initialBody[fullKey] = {
+                    valueType: 'fixed',
+                    value: value as string | number | boolean,
+                  };
+                }
+                // 如果是对象（非数组），递归处理
+                else if (!Array.isArray(value)) {
+                  // 🔧 空对象特殊处理
+                  if (Object.keys(value).length === 0) {
+                    initialBody[fullKey] = {
+                      valueType: 'fixed',
+                      value: {} as object,
+                    };
+                  } else {
+                    fillBodyRecursive(value, fullKey);
+                  }
+                }
+                // 数组类型处理
+                else {
+                  // 🔧 空数组特殊处理
+                  if ((value as any[]).length === 0) {
+                    initialBody[fullKey] = {
+                      valueType: 'fixed',
+                      value: [] as any[],
+                    };
+                  } else {
+                    initialBody[fullKey] = {
+                      valueType: 'fixed',
+                      value: JSON.stringify(value),
+                    };
+                  }
+                }
+              });
+            };
+            
+            fillBodyRecursive(processedApiInfo.requestBody);
+          }
           setBody(initialBody);
           
           // 同时初始化 JSON 文本
@@ -401,14 +457,29 @@ export default function NodeConfigSheet({
     if (node.type === 'api') {
       const finalUrl = currentPath.includes('{') ? currentPath : (nodeData as ApiNodeData).url;
       
-      // 🔧 第1步：将扁平化的 body 重建为嵌套结构
-      console.log('[Body处理] 第1步 - 扁平化body:', body);
-      const nestedBody = reconstructNestedBody(body);
-      console.log('[Body处理] 第2步 - 重建嵌套结构:', nestedBody);
+      let normalizedBody: any;
       
-      // 🔧 第2步：规范化 body 中的值
-      const normalizedBody = normalizeBodyValues(nestedBody);
-      console.log('[Body处理] 第3步 - 规范化后:', normalizedBody);
+      // 🔧 对于 form-data 和 x-www-form-urlencoded，body 保持扁平键值对结构
+      if (contentType === 'form-data' || contentType === 'x-www-form-urlencoded') {
+        console.log('[Body处理] form-data/urlencoded 模式 - 直接使用扁平结构:', body);
+        // 直接规范化扁平结构，不需要重建嵌套
+        normalizedBody = {};
+        Object.entries(body).forEach(([key, paramValue]) => {
+          if (key.trim()) {
+            normalizedBody[key.trim()] = paramValue;
+          }
+        });
+        console.log('[Body处理] form-data/urlencoded 规范化后:', normalizedBody);
+      } else {
+        // 🔧 JSON 和 raw 类型：将扁平化的 body 重建为嵌套结构
+        console.log('[Body处理] 第1步 - 扁平化body:', body);
+        const nestedBody = reconstructNestedBody(body);
+        console.log('[Body处理] 第2步 - 重建嵌套结构:', nestedBody);
+        
+        // 🔧 第2步：规范化 body 中的值
+        normalizedBody = normalizeBodyValues(nestedBody);
+        console.log('[Body处理] 第3步 - 规范化后:', normalizedBody);
+      }
       
       updatedData = {
         ...nodeData,
@@ -418,6 +489,7 @@ export default function NodeConfigSheet({
           queryParams,
           headers,
           body: normalizedBody,
+          contentType,
         },
       };
       console.log('💾 保存API节点配置:', {
@@ -633,7 +705,7 @@ export default function NodeConfigSheet({
           {/* API基本信息 */}
           {node?.type === 'api' && nodeData && (
             <>
-              <div className="space-y-3 p-4 border rounded-md bg-muted/50">
+              <div className="space-y-3 p-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md bg-muted/50">
                 <div className="flex items-center gap-2">
                   <Badge className={`${getMethodColor((nodeData as ApiNodeData).method)} text-white`}>
                     {(nodeData as ApiNodeData).method}
@@ -648,7 +720,7 @@ export default function NodeConfigSheet({
               </div>
               
               {/* 后置清理开关 */}
-              <div className="flex items-start gap-3 p-4 border rounded-md bg-muted/50">
+              <div className="flex items-start gap-3 p-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md bg-muted/50">
                 <Trash2 className="h-5 w-5 text-muted-foreground mt-0.5" />
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center justify-between">
@@ -728,19 +800,85 @@ export default function NodeConfigSheet({
 
               {/* 请求体 - 只要 API 有请求体定义或已配置 body 就显示 */}
               {((apiInfo?.requestBody !== null && apiInfo?.requestBody !== undefined) || 
-                (body && Object.keys(body).length > 0)) && (
+                (body && Object.keys(body).length > 0) ||
+                contentType !== 'none') && (
                 <div className="space-y-3">
-                  <Label className="text-sm font-semibold">{t('requestBody')}</Label>
-                  <JsonEditorWithVariables
-                    initialJson={bodyJsonText}
-                    values={body}
-                    onChange={(jsonText, variables) => {
-                      setBodyJsonText(jsonText);
-                      setBody(variables);
-                    }}
-                    nodes={nodes}
-                    currentNodeId={node.id}
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">
+                      {contentType === 'form-data' 
+                        ? 'Form Data (表单数据)' 
+                        : contentType === 'x-www-form-urlencoded' 
+                          ? 'Form URL Encoded (表单编码)' 
+                          : contentType === 'raw'
+                            ? '原始文本 (Raw)'
+                            : t('requestBody')}
+                    </Label>
+                    <Select
+                      value={contentType}
+                      onValueChange={(value: ContentType) => {
+                        setContentType(value);
+                        // 切换类型时清空body，避免格式不兼容
+                        if ((value === 'form-data' || value === 'x-www-form-urlencoded') && 
+                            (contentType === 'json' || contentType === 'raw')) {
+                          setBody({});
+                          setBodyJsonText('{}');
+                        } else if ((value === 'json' || value === 'raw') && 
+                                   (contentType === 'form-data' || contentType === 'x-www-form-urlencoded')) {
+                          setBody({});
+                          setBodyJsonText('{}');
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-[220px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REQUEST_BODY_TYPES.filter(t => t.value !== 'none').map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* 根据内容类型显示不同的编辑器 */}
+                  {(contentType === 'form-data' || contentType === 'x-www-form-urlencoded') ? (
+                    <FormDataEditor
+                      values={body}
+                      onChange={(newBody) => {
+                        setBody(newBody);
+                        // 同步更新 bodyJsonText 用于显示
+                        try {
+                          const jsonObj: Record<string, any> = {};
+                          Object.entries(newBody).forEach(([key, pv]) => {
+                            if (pv.valueType === 'variable') {
+                              jsonObj[key] = `\${${pv.variable}}`;
+                            } else {
+                              jsonObj[key] = pv.value;
+                            }
+                          });
+                          setBodyJsonText(JSON.stringify(jsonObj, null, 2));
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      nodes={nodes}
+                      currentNodeId={node.id}
+                      contentType={contentType}
+                    />
+                  ) : (
+                    <JsonEditorWithVariables
+                      initialJson={bodyJsonText}
+                      values={body}
+                      onChange={(jsonText, variables) => {
+                        setBodyJsonText(jsonText);
+                        setBody(variables);
+                      }}
+                      nodes={nodes}
+                      currentNodeId={node.id}
+                    />
+                  )}
                 </div>
               )}
 
@@ -776,7 +914,7 @@ export default function NodeConfigSheet({
                 {apiInfo?.responseBody ? (
                   <div className="space-y-2">
                     {/* JSON格式显示 */}
-                    <div className="p-4 bg-muted rounded-md border">
+                    <div className="p-4 bg-muted rounded-md border border-[#e5e7eb] dark:border-[#4b5563]">
                       <pre className="text-xs overflow-auto max-h-96 font-mono">
                         {typeof apiInfo.responseBody === 'string' 
                           ? (() => {
@@ -792,7 +930,7 @@ export default function NodeConfigSheet({
                     </div>
 
                     {/* 变量引用说明 */}
-                    <div className="p-3 bg-accent/50 rounded-md text-xs border border-border">
+                    <div className="p-3 bg-accent/50 rounded-md text-xs border border-[#e5e7eb] dark:border-[#4b5563]">
                       <p className="font-medium text-foreground mb-2">
                         {t('howToReference')}
                       </p>
@@ -893,7 +1031,7 @@ export default function NodeConfigSheet({
           )}
 
           {/* 保存按钮 */}
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          <div className="flex justify-end gap-2 pt-4 border-t border-[#e5e7eb] dark:border-[#4b5563]">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {t('cancel')}
             </Button>

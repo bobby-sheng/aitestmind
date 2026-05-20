@@ -1,4 +1,4 @@
-# 🚀 AI TestMind - Docker 快速开始
+# 🚀 API 智能测试平台 - Docker 快速开始
 
 ## 📦 选择你的方式
 

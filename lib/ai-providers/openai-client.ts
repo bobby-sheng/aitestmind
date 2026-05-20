@@ -52,12 +52,16 @@ export class OpenAIClient extends AIClient {
                 arguments: tc.function.arguments,
               },
             })),
+            // DeepSeek thinking 模型要求回传 reasoning_content，仅在存在时添加
+            ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
           };
         }
         
         return {
           role: msg.role as 'system' | 'user' | 'assistant',
           content: msg.content || '',
+          // DeepSeek thinking 模型要求回传 reasoning_content，仅在存在时添加
+          ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
         };
       });
 
@@ -81,6 +85,9 @@ export class OpenAIClient extends AIClient {
       const message = choice.message;
 
       // 转换响应格式
+      // 注意：DeepSeek 的 thinking 模型会返回 reasoning_content，必须在后续请求中回传
+      const reasoningContent = (message as any).reasoning_content || undefined;
+
       return {
         content: message.content,
         toolCalls: message.tool_calls?.filter((tc): tc is any => tc.type === 'function').map(tc => ({
@@ -90,6 +97,7 @@ export class OpenAIClient extends AIClient {
             arguments: tc.function.arguments,
           },
         })) || [],
+        reasoningContent,
         usage: {
           promptTokens: completion.usage?.prompt_tokens || 0,
           completionTokens: completion.usage?.completion_tokens || 0,

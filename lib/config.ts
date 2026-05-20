@@ -10,7 +10,7 @@
  * 优先级：
  * 1. NEXT_PUBLIC_EXECUTOR_URL - 用于浏览器端访问
  * 2. EXECUTOR_URL - 用于服务端访问（API 路由）
- * 3. 默认值 - http://localhost:8001
+ * 3. 默认值 - http://192.168.10.113:18015（与 executor/main.py API_PORT 一致）
  * 
  * @param forClient 是否用于客户端（浏览器）访问，默认 true
  * @returns 执行器服务的完整 URL
@@ -18,10 +18,10 @@
 export function getExecutorUrl(forClient: boolean = true): string {
   if (forClient) {
     // 浏览器端使用 NEXT_PUBLIC_EXECUTOR_URL
-    return process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://localhost:8001';
+    return process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://192.168.10.113:18015';
   } else {
     // 服务端使用 EXECUTOR_URL（API 路由内部调用）
-    return process.env.EXECUTOR_URL || process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://localhost:8001';
+    return process.env.EXECUTOR_URL || process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://192.168.10.113:18015';
   }
 }
 
@@ -32,9 +32,9 @@ export const config = {
   // 执行器配置
   executor: {
     // 客户端（浏览器）访问的 URL
-    clientUrl: process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://localhost:8001',
+    clientUrl: process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://192.168.10.113:18015',
     // 服务端（API 路由）访问的 URL
-    serverUrl: process.env.EXECUTOR_URL || process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://localhost:8001',
+    serverUrl: process.env.EXECUTOR_URL || process.env.NEXT_PUBLIC_EXECUTOR_URL || 'http://192.168.10.113:18015',
   },
   
   // 应用配置

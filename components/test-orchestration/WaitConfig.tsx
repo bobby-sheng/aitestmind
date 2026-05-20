@@ -175,7 +175,7 @@ export default function WaitConfig({
               {t('variableTip')} <code className="bg-muted px-1 rounded">message</code>{t('variableTip2')} <code className="bg-muted px-1 rounded">step_1.response.message</code>）
             </p>
             {showVariableSelector && (
-              <div className="border rounded-lg p-3 bg-background">
+              <div className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg p-3 bg-background">
                 <div className="flex items-center justify-between mb-2">
                   <Label className="text-xs font-medium">
                     {isApiNodeContext ? t('selectCurrentField') : t('selectVariable')}
@@ -265,7 +265,7 @@ export default function WaitConfig({
                 </Button>
               </div>
               {showValueSelector && (
-                <div className="border rounded-lg p-3 bg-background">
+                <div className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg p-3 bg-background">
                   <div className="flex items-center justify-between mb-2">
                     <Label className="text-xs font-medium">{t('selectVariableAsValue')}</Label>
                     <Button

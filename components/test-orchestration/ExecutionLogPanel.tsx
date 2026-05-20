@@ -540,7 +540,7 @@ export default function ExecutionLogPanel({
                   step.status === 'error' ? 'border-red-200 bg-red-50/50' :
                   step.status === 'success' ? 'border-green-200 bg-green-50/50' :
                   step.status === 'running' ? 'border-blue-200 bg-blue-50/50' :
-                  'border-gray-200'
+                  'border-[#e5e7eb] dark:border-[#4b5563]'
                 }`}>
                   {/* 步骤头部 */}
                   <div 
@@ -575,7 +575,7 @@ export default function ExecutionLogPanel({
 
                   {/* 步骤详情（可折叠） */}
                   {isExpanded && (
-                    <div className="border-t bg-background px-4 py-3 space-y-3 text-sm">
+                    <div className="border-t border-[#e5e7eb] dark:border-[#4b5563] bg-background px-4 py-3 space-y-3 text-sm">
                       {/* 等待节点的详细信息 */}
                       {step.nodeType === 'wait' && (
                         <div>
@@ -670,9 +670,25 @@ export default function ExecutionLogPanel({
                             )}
                             {step.request.json && (
                               <details className="mt-2">
-                                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">请求体</summary>
+                                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">请求体 (JSON)</summary>
                                 <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-x-auto">
                                   {JSON.stringify(step.request.json, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                            {step.request.data && (
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">请求体 (表单数据)</summary>
+                                <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-x-auto">
+                                  {JSON.stringify(step.request.data, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                            {step.request.files && Object.keys(step.request.files).length > 0 && (
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">请求体 (文件)</summary>
+                                <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-x-auto">
+                                  {JSON.stringify(step.request.files, null, 2)}
                                 </pre>
                               </details>
                             )}
@@ -687,12 +703,20 @@ export default function ExecutionLogPanel({
                             <span className="text-green-600">📥</span> 响应信息
                           </div>
                           <div className="pl-6 space-y-1 text-xs">
-                            <div>
-                              <span className="text-muted-foreground">状态码:</span> 
-                              <Badge variant={step.response.status >= 200 && step.response.status < 300 ? "outline" : "destructive"} className="ml-2">
-                                {step.response.status}
-                              </Badge>
-                            </div>
+                            {step.response.status !== undefined && (
+                              <div>
+                                <span className="text-muted-foreground">状态码:</span> 
+                                <Badge variant={step.response.status >= 200 && step.response.status < 300 ? "outline" : "destructive"} className="ml-2">
+                                  {step.response.status}
+                                </Badge>
+                              </div>
+                            )}
+                            {step.response.responseTime !== undefined && (
+                              <div>
+                                <span className="text-muted-foreground">响应时间:</span> 
+                                <span className="ml-2">{step.response.responseTime}ms</span>
+                              </div>
+                            )}
                             {step.response.body && (
                               <details className="mt-2">
                                 <summary className="cursor-pointer text-muted-foreground hover:text-foreground">响应体</summary>
@@ -772,7 +796,7 @@ export default function ExecutionLogPanel({
 
                       {/* 并发节点：显示每个API的日志 */}
                       {step.nodeType === 'parallel' && step.parallelLogs && step.parallelLogs.length > 0 && (
-                        <div className="border-t pt-3 mt-3">
+                        <div className="border-t border-[#e5e7eb] dark:border-[#4b5563] pt-3 mt-3">
                           <div className="font-medium mb-3 flex items-center gap-2">
                             <span className="text-purple-600">🔀</span> 并发 API 执行详情
                             <Badge variant="outline" className="text-xs">
@@ -783,7 +807,7 @@ export default function ExecutionLogPanel({
                             {step.parallelLogs.map((apiLog: ParallelApiLog, apiIdx: number) => (
                               <div 
                                 key={apiLog.apiId} 
-                                className={`border rounded-lg p-3 ${
+                                className={`border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg p-3 ${
                                   apiLog.success ? 'bg-green-50/50 border-green-200' : 'bg-red-50/50 border-red-200'
                                 }`}
                               >

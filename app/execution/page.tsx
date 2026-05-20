@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Play, StopCircle, RotateCcw, Eye, Loader2, Clock, CheckCircle2, XCircle, FileText } from "lucide-react";
+import { Play, StopCircle, RotateCcw, Eye, Loader2, Clock, CheckCircle2, XCircle, FileText, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslations } from "next-intl";
 
@@ -87,6 +87,36 @@ export default function ExecutionPage() {
     router.push(`/execution/suite/${executionId}/logs`);
   };
 
+  const handleDeleteExecution = async (executionId: string) => {
+    if (!confirm(t('deleteExecutionConfirm'))) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/executions/suite/${executionId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: t('operationSuccess'),
+          description: t('deleteExecutionSuccess'),
+        });
+        loadExecutions();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('删除执行记录失败:', error);
+      toast({
+        title: t('operationFailed'),
+        description: t('deleteExecutionFailed'),
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleStop = async (executionId: string) => {
     try {
       const response = await fetch(`/api/executions/suite/${executionId}/stop`, {
@@ -135,6 +165,38 @@ export default function ExecutionPage() {
       toast({
         title: t('retryFailed'),
         description: t('retryExecutionFailed'),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm(t('clearAllExecutionsConfirm'))) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/executions/suite/clear', {
+        method: 'POST',
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: t('operationSuccess'),
+          description: t('clearAllExecutionsSuccess'),
+        });
+        // 重置到第一页并刷新列表
+        setPage(1);
+        loadExecutions();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('清空执行记录失败:', error);
+      toast({
+        title: t('operationFailed'),
+        description: t('clearAllExecutionsFailed'),
         variant: 'destructive',
       });
     }
@@ -202,56 +264,18 @@ export default function ExecutionPage() {
         <div className="text-sm text-muted-foreground">
           {t('viewExecutionStatus')}
         </div>
-        <Button onClick={loadExecutions} variant="outline" size="sm">
-          {tCommon('refresh')}
-        </Button>
-      </div>
-
-      {/* 分页控制栏（在内容上方） */}
-      {total > pageSize && (
-        <div className="flex items-center justify-between mb-4 pb-3 border-b flex-shrink-0">
-          <div className="text-sm text-muted-foreground">
-            {t('totalRecords', { total, totalPages, page })}
-          </div>
-          <div className="flex gap-2 items-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(1)}
-              disabled={page === 1}
-            >
-              {t('firstPage')}
+        <div className="flex gap-2">
+          {executions.length > 0 && (
+            <Button onClick={handleClearAll} variant="outline" size="sm">
+              <Trash2 className="h-4 w-4 mr-2" />
+              {t('clearAllExecutions')}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              {t('prevPage')}
-            </Button>
-            <span className="text-sm px-2">
-              {page} / {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(p => p + 1)}
-              disabled={page >= totalPages}
-            >
-              {t('nextPage')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages}
-            >
-              {t('lastPage')}
-            </Button>
-          </div>
+          )}
+          <Button onClick={loadExecutions} variant="outline" size="sm">
+            {tCommon('refresh')}
+          </Button>
         </div>
-      )}
+      </div>
 
       {/* 可滚动内容区域 */}
       <div className="flex-1 overflow-y-auto pr-2">
@@ -287,7 +311,7 @@ export default function ExecutionPage() {
                           <CardTitle>{execution.suiteName}</CardTitle>
                           {getStatusBadge(execution.status)}
                         </div>
-                        <CardDescription className="mt-1 flex items-center gap-4">
+                        <CardDescription className="mt-1 flex items-center gap-4 flex-wrap">
                           <span>{t('startedAt')} {formatTime(execution.startTime)}</span>
                           {execution.duration && (
                             <span>{t('timeElapsed')} {(execution.duration / 1000).toFixed(2)}{t('seconds')}</span>
@@ -299,9 +323,14 @@ export default function ExecutionPage() {
                                   ? t('manual') 
                                   : execution.triggeredBy === 'schedule' 
                                     ? t('schedule') 
-                                    : execution.triggeredBy
+                                    : execution.triggeredBy === 'retry'
+                                      ? t('retry')
+                                      : execution.triggeredBy
                               }
                             </span>
+                          )}
+                          {execution.triggerUser && (
+                            <span>{tCommon('triggerUser')}: {execution.triggerUser}</span>
                           )}
                         </CardDescription>
                       </div>
@@ -333,6 +362,14 @@ export default function ExecutionPage() {
                         >
                           <FileText className="h-4 w-4 mr-1" />
                           {t('viewLogs')}
+                        </Button>
+                        <Button 
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteExecution(execution.id)}
+                          aria-label={t('deleteExecution')}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                         <Button 
                           size="sm"
@@ -386,7 +423,7 @@ export default function ExecutionPage() {
 
       {/* 底部分页控制栏（固定在底部） */}
       {total > pageSize && (
-        <div className="flex items-center justify-between pt-4 mt-4 border-t flex-shrink-0">
+        <div className="flex items-center justify-between pt-4 mt-4 border-t border-[#e5e7eb] dark:border-[#4b5563] flex-shrink-0">
           <div className="text-sm text-muted-foreground">
             {t('displayingRecords', { 
               start: (page - 1) * pageSize + 1, 

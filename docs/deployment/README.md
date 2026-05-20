@@ -6,7 +6,7 @@
 
 ## 中文
 
-本目录包含 AI TestMind 的所有部署相关文档。
+本目录包含 API 智能测试平台 的所有部署相关文档。
 
 ### 📚 文档列表
 
@@ -105,7 +105,7 @@ A: 参考 [完整部署指南](DEPLOYMENT_GUIDE.md) 中的备份策略章节。
 
 ## English
 
-This directory contains all deployment-related documentation for AI TestMind.
+This directory contains all deployment-related documentation for API 智能测试平台.
 
 ### 📚 Documentation List
 

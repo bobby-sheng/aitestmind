@@ -39,23 +39,57 @@ interface HierarchicalSearchParams {
   limit?: number; // 返回结果数量限制
 }
 
-// 移除评分逻辑，让AI根据4层分类信息自行判断
+/**
+ * 对搜索结果按层级匹配度评分排序
+ * 匹配的层级越多分数越高，确保最相关的 API 排在前面
+ */
+function scoreAndSort(
+  apis: SearchResult[],
+  params: HierarchicalSearchParams,
+  topN: number
+): SearchResult[] {
+  const scored = apis.map(api => {
+    let score = 0;
+
+    if (params.platform && api.platform && api.platform.includes(params.platform)) {
+      score += 1;
+    }
+    if (params.component && api.component && api.component.includes(params.component)) {
+      score += 1;
+    }
+    if (params.feature && api.feature && api.feature.includes(params.feature)) {
+      score += 1;
+    }
+    if (params.apiName) {
+      if (api.name && api.name.includes(params.apiName)) score += 1;
+      if (api.path && api.path.includes(params.apiName)) score += 1;
+      if (api.description && api.description.includes(params.apiName)) score += 1;
+    }
+
+    return { api, score };
+  });
+
+  // 按分数降序排列，相同分数保持数据库原始顺序（稳定排序）
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, topN).map(item => item.api);
+}
 
 /**
  * 层级化智能搜索API
- * 
+ *
  * @description
  * 基于4层分类结构进行智能搜索，自动从高到低匹配：
  * - 第1层：平台 (Platform)
  * - 第2层：组件 (Component)
  * - 第3层：功能 (Feature)
  * - 第4层：API名称
- * 
+ *
  * 匹配策略：
  * 1. 优先匹配多层级 (分数更高)
  * 2. 完全匹配优于包含匹配
  * 3. 支持关键词模糊搜索
- * 
+ *
  * @example
  * // 示例1: 提供完整层级
  * hierarchicalSearchApis({
@@ -64,13 +98,13 @@ interface HierarchicalSearchParams {
  *   feature: '管理',
  *   apiName: '新增'
  * })
- * 
+ *
  * // 示例2: 只提供部分层级
  * hierarchicalSearchApis({
  *   platform: 'inet',
  *   apiName: '查询实例列表'
  * })
- * 
+ *
  * // 示例3: 使用原始用户查询
  * hierarchicalSearchApis({
  *   userQuery: '创建ECS云主机实例',
@@ -81,21 +115,23 @@ export async function hierarchicalSearchApis(
   params: HierarchicalSearchParams
 ): Promise<SearchResult[]> {
   try {
-    const limit = params.limit || 15;
-    
+    // 最终返回给调用方的数量上限
+    const resultLimit = params.limit || 15;
+    // 数据库拉取时放宽上限，给评分排序留出足够候选集，避免匹配度高的 API 被截断
+    const fetchLimit = Math.max(resultLimit * 3, 50);
+
     // 构建查询条件
     const where: any = {};
-    const orConditions: any[] = [];
-    
+
     // ========== 阶段1: 层级化精确查询 ==========
-    
+
     // 如果提供了平台，优先按平台过滤
     if (params.platform) {
       where.OR = [
         { platform: { contains: params.platform } },
       ];
     }
-    
+
     // 如果提供了组件，添加组件过滤
     if (params.component) {
       if (!where.OR) where.OR = [];
@@ -103,7 +139,7 @@ export async function hierarchicalSearchApis(
         { component: { contains: params.component } }
       );
     }
-    
+
     // 如果提供了功能，添加功能过滤
     if (params.feature) {
       if (!where.OR) where.OR = [];
@@ -111,7 +147,7 @@ export async function hierarchicalSearchApis(
         { feature: { contains: params.feature } }
       );
     }
-    
+
     // 如果提供了API名称，添加名称过滤
     if (params.apiName) {
       if (!where.OR) where.OR = [];
@@ -121,13 +157,13 @@ export async function hierarchicalSearchApis(
         { description: { contains: params.apiName } }
       );
     }
-    
+
     // ========== 阶段2: 原始查询关键词搜索 (fallback) ==========
-    
+
     // 如果提供了原始查询且没有其他层级参数，使用全文搜索
     if (params.userQuery && !params.platform && !params.component && !params.feature && !params.apiName) {
       const keywords = params.userQuery.split(/\s+/).filter(k => k.length > 1);
-      
+
       where.OR = keywords.flatMap(keyword => [
         { name: { contains: keyword } },
         { description: { contains: keyword } },
@@ -137,13 +173,13 @@ export async function hierarchicalSearchApis(
         { feature: { contains: keyword } },
       ]);
     }
-    
+
     // HTTP方法过滤
     if (params.method) {
       where.method = params.method.toUpperCase();
     }
-    
-    // 执行数据库查询
+
+    // 执行数据库查询（拉取更多候选以便评分排序）
     const apis = await prisma.api.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
       select: {
@@ -156,12 +192,11 @@ export async function hierarchicalSearchApis(
         component: true,
         feature: true,
       },
-      take: limit, // 直接返回匹配的结果，不需要过度检索
+      take: fetchLimit,
     });
-  
-    // 直接返回查询结果，带上完整的4层分类信息
-    // AI会根据 platform/component/feature/name 自行判断最合适的API
-    return apis as SearchResult[];
+
+    // 按层级匹配度评分排序，确保最相关的 API 排在前面
+    return scoreAndSort(apis as SearchResult[], params, resultLimit);
   } catch (error) {
     console.error('[hierarchicalSearchApis] 检索失败:', error);
     

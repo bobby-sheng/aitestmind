@@ -1,6 +1,7 @@
 """
 测试套件调度器 - 支持定时和周期性执行测试套件
 """
+import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -24,7 +25,7 @@ class TestSuiteScheduler:
     async def initialize(self):
         """初始化调度器，从数据库加载所有活动的调度任务"""
         try:
-            print("\n{'='*60}")
+            print(f"\n{'='*60}")
             print("📋 加载调度任务...")
             print(f"{'='*60}\n")
             
@@ -45,6 +46,16 @@ class TestSuiteScheduler:
             
             # 启动调度器
             self.scheduler.start()
+            
+            # 调度器启动后，更新所有任务的下次执行时间
+            for job in self.scheduler.get_jobs():
+                try:
+                    next_run_time = getattr(job, 'next_run_time', None)
+                    if next_run_time:
+                        self.database.update_suite_next_run_time(job.id, next_run_time)
+                        print(f"  📅 {job.name}: 下次执行 {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                except Exception as e:
+                    print(f"  ⚠️ 更新 {job.name} 下次执行时间失败: {e}")
             
             print(f"\n{'='*60}")
             print(f"✅ 调度器已启动，当前任务数: {len(self.scheduler.get_jobs())}")
@@ -88,7 +99,7 @@ class TestSuiteScheduler:
             return
         
         # 添加调度任务
-        self.scheduler.add_job(
+        job = self.scheduler.add_job(
             func=self._execute_scheduled_suite,
             trigger=trigger,
             args=[suite_id, suite_data['name']],
@@ -97,11 +108,18 @@ class TestSuiteScheduler:
             replace_existing=True
         )
         
-        # 更新下次执行时间
-        job = self.scheduler.get_job(suite_id)
-        if job and job.next_run_time:
-            self.database.update_suite_next_run_time(suite_id, job.next_run_time)
-            print(f"    下次执行: {job.next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        # 更新下次执行时间（安全访问 next_run_time）
+        try:
+            next_run_time = getattr(job, 'next_run_time', None)
+            if next_run_time:
+                self.database.update_suite_next_run_time(suite_id, next_run_time)
+                print(f"    下次执行: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                # 调度器未启动时，next_run_time 可能为 None
+                # 调度器启动后会自动计算
+                print(f"    调度任务已添加，等待调度器启动后计算执行时间")
+        except Exception as e:
+            print(f"    ⚠️ 获取下次执行时间失败: {e}，任务已添加")
     
     def _create_trigger(self, config: dict) -> Optional[Any]:
         """
@@ -125,13 +143,25 @@ class TestSuiteScheduler:
                     print("❌ 缺少 executeAt 字段")
                     return None
                 
-                # 解析时间字符串
+                # 解析时间字符串（兼容两种格式）：
+                # 1) 'YYYY-MM-DDTHH:mm:ss'（无时区，按 timezone 解释）
+                # 2) ISO 8601（含 Z 或偏移，表示绝对时刻）
                 execute_at = datetime.fromisoformat(execute_at_str.replace('Z', '+00:00'))
-                
-                # 转换为目标时区
+
+                # 统一对齐到配置时区
                 if execute_at.tzinfo is None:
                     execute_at = timezone.localize(execute_at)
-                
+                else:
+                    execute_at = execute_at.astimezone(timezone)
+
+                # 如果时间已经过去，给出清晰提示（APScheduler 不会“补跑” DateTrigger）
+                now_in_tz = datetime.now(timezone)
+                if execute_at <= now_in_tz:
+                    print(
+                        f"⚠️  一次性调度时间已过期: {execute_at.strftime('%Y-%m-%d %H:%M:%S %Z')} "
+                        f"(当前时间: {now_in_tz.strftime('%Y-%m-%d %H:%M:%S %Z')})"
+                    )
+
                 return DateTrigger(run_date=execute_at, timezone=timezone)
             
             elif schedule_type == 'recurring':
@@ -237,8 +267,10 @@ class TestSuiteScheduler:
             
             import httpx
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # 使用环境变量配置 Next.js 服务地址，默认端口与 package.json 中保持一致 (3009)
+                next_base_url = os.getenv("NEXT_API_BASE_URL", "http://localhost:3009")
                 response = await client.post(
-                    f'http://localhost:3000/api/test-suites/{suite_id}/execute',
+                    f'{next_base_url}/api/test-suites/{suite_id}/execute',
                     json={'triggered_by': 'schedule'}
                 )
                 
@@ -256,9 +288,11 @@ class TestSuiteScheduler:
             print(f"✅ 调度触发完成（实际执行由 Next.js 处理）")
             print(f"{'='*60}\n")
             
-            # 如果是一次性调度，执行后自动禁用
+            # 获取调度配置
             schedule_config = json.loads(suite.get('scheduleConfig', '{}'))
+            
             if schedule_config.get('type') == 'once':
+                # 如果是一次性调度，执行后自动禁用
                 self.database.disable_suite_schedule(suite_id)
                 # 一次性调度执行后 APScheduler 会自动移除 job，所以我们只需要检查它是否还存在
                 try:
@@ -267,6 +301,21 @@ class TestSuiteScheduler:
                 except Exception as e:
                     print(f"⚠️  移除调度任务时出错（可能已自动移除）: {e}")
                 print(f"📝 一次性调度已完成，已自动禁用\n")
+            else:
+                # 周期性调度：更新下次执行时间
+                try:
+                    job = self.scheduler.get_job(suite_id)
+                    if job:
+                        next_run_time = getattr(job, 'next_run_time', None)
+                        if next_run_time:
+                            self.database.update_suite_next_run_time(suite_id, next_run_time)
+                            print(f"📅 下次执行时间: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        else:
+                            print(f"⚠️  无法获取下次执行时间")
+                    else:
+                        print(f"⚠️  调度任务不存在，可能已被移除")
+                except Exception as e:
+                    print(f"⚠️  更新下次执行时间失败: {e}")
             
         except Exception as e:
             print(f"❌ 调度执行失败: {e}")
@@ -335,10 +384,11 @@ class TestSuiteScheduler:
         """
         job = self.scheduler.get_job(suite_id)
         if job:
+            next_run_time = getattr(job, 'next_run_time', None)
             return {
                 'id': job.id,
                 'name': job.name,
-                'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+                'next_run_time': next_run_time.isoformat() if next_run_time else None,
                 'trigger': str(job.trigger)
             }
         return None
@@ -351,15 +401,16 @@ class TestSuiteScheduler:
             调度任务列表
         """
         jobs = self.scheduler.get_jobs()
-        return [
-            {
+        result = []
+        for job in jobs:
+            next_run_time = getattr(job, 'next_run_time', None)
+            result.append({
                 'id': job.id,
                 'name': job.name,
-                'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+                'next_run_time': next_run_time.isoformat() if next_run_time else None,
                 'trigger': str(job.trigger)
-            }
-            for job in jobs
-        ]
+            })
+        return result
     
     def shutdown(self):
         """关闭调度器"""

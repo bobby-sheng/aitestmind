@@ -9,6 +9,46 @@
 export type ImportSource = 'manual' | 'har';
 
 /**
+ * 请求体内容类型
+ */
+export type RequestBodyType = 'none' | 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw';
+
+/**
+ * 请求体内容类型选项（用于UI展示）
+ */
+export const REQUEST_BODY_TYPES: { value: RequestBodyType; label: string; mimeType: string }[] = [
+  { value: 'none', label: '无请求体', mimeType: '' },
+  { value: 'json', label: 'JSON', mimeType: 'application/json' },
+  { value: 'form-data', label: 'Form Data (multipart/form-data)', mimeType: 'multipart/form-data' },
+  { value: 'x-www-form-urlencoded', label: 'Form URL Encoded', mimeType: 'application/x-www-form-urlencoded' },
+  { value: 'raw', label: '原始文本', mimeType: 'text/plain' },
+];
+
+/**
+ * 根据 MIME 类型获取请求体类型
+ */
+export function getBodyTypeFromMimeType(mimeType?: string): RequestBodyType {
+  if (!mimeType) return 'none';
+  const lowerMimeType = mimeType.toLowerCase();
+  if (lowerMimeType.includes('application/json') || lowerMimeType === 'json') return 'json';
+  if (lowerMimeType.includes('multipart/form-data') || lowerMimeType === 'form-data') return 'form-data';
+  // 支持多种 urlencoded 格式的匹配
+  if (lowerMimeType.includes('x-www-form-urlencoded') || 
+      lowerMimeType.includes('urlencoded') ||
+      lowerMimeType === 'x-www-form-urlencoded') return 'x-www-form-urlencoded';
+  if (lowerMimeType.includes('text/') || lowerMimeType === 'raw') return 'raw';
+  return 'json'; // 默认为 JSON
+}
+
+/**
+ * 根据请求体类型获取 MIME 类型
+ */
+export function getMimeTypeFromBodyType(bodyType: RequestBodyType): string {
+  const found = REQUEST_BODY_TYPES.find(t => t.value === bodyType);
+  return found?.mimeType || 'application/json';
+}
+
+/**
  * API 四层分类结构
  * Platform (平台) -> Component (组件) -> Feature (功能) -> API (API动作)
  */
@@ -16,6 +56,13 @@ export interface ApiFourLayerClassification {
   platform?: string;
   component?: string;
   feature?: string;
+  /**
+   * 子功能（第4层，可选）
+   * 说明：目前数据库中没有单独的 subFeature 字段，
+   * 实际入库时会将「功能 > 子功能」编码到 feature 字段中。
+   * 该字段主要用于前端选择和筛选体验，以及与部分接口返回保持类型一致。
+   */
+  subFeature?: string;
 }
 
 /**

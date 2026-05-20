@@ -5,6 +5,7 @@
 
 import http from 'http';
 import https from 'https';
+import net from 'net';
 import { URL } from 'url';
 import {
   HarFile,
@@ -29,6 +30,7 @@ export class ProxyRecorder {
   private isPaused: boolean = false;
   private sseClients: Set<any> = new Set();
   private port: number;
+  private connections: Set<net.Socket> = new Set();
 
   constructor(port: number = 8899) {
     this.port = port;
@@ -56,6 +58,14 @@ export class ProxyRecorder {
         // 创建HTTP代理服务器
         this.server = http.createServer((clientReq, clientRes) => {
           this.handleProxyRequest(clientReq, clientRes);
+        });
+
+        // 记录所有底层连接，便于优雅关闭时避免被 keep-alive 阻塞
+        this.server.on('connection', (socket: net.Socket) => {
+          this.connections.add(socket);
+          socket.on('close', () => {
+            this.connections.delete(socket);
+          });
         });
 
         // 处理CONNECT方法（用于HTTPS）
@@ -253,7 +263,7 @@ export class ProxyRecorder {
     const [hostname, port] = (req.url || '').split(':');
 
     // 连接到目标服务器
-    const serverSocket = require('net').connect(
+    const serverSocket = net.connect(
       parseInt(port) || 443,
       hostname,
       () => {
@@ -334,12 +344,44 @@ export class ProxyRecorder {
 
     // 关闭服务器
     if (this.server) {
+      const serverToClose = this.server;
+
+      // 主动销毁所有现有连接，避免 keep-alive 长时间占用导致 close 回调不触发
+      this.connections.forEach((socket) => {
+        try {
+          socket.destroy();
+        } catch (error) {
+          console.error('销毁代理连接失败:', error);
+        }
+      });
+      this.connections.clear();
+
       await new Promise<void>((resolve) => {
-        this.server!.close(() => {
-          console.log('代理服务器已关闭');
+        let resolved = false;
+
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            console.warn('代理服务器关闭超时，强制继续后续流程');
+            resolved = true;
+            resolve();
+          }
+        }, 3000);
+
+        serverToClose.close((err) => {
+          if (resolved) return;
+          clearTimeout(timeout);
+
+          if (err) {
+            console.error('代理服务器关闭时出错:', err);
+          } else {
+            console.log('代理服务器已关闭');
+          }
+
+          resolved = true;
           resolve();
         });
       });
+
       this.server = null;
     }
 

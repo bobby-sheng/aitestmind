@@ -58,12 +58,23 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
   }>({});
   
   // 冲突检测
   const [conflicts, setConflicts] = useState<ApiConflict[]>([]);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [preparedApis, setPreparedApis] = useState<any[]>([]);
+
+  // 统一判重Key：GET 忽略 query，只按 pathname 判重；其他方法保持 method + path
+  const getApiIdentityKey = (api: any) => {
+    const method = String(api?.method || '').toUpperCase();
+    let path = String(api?.path || '');
+    if (method === 'GET') {
+      path = path.split('?')[0];
+    }
+    return `${method}|${path}`;
+  };
 
   const parseHarContent = (harText: string): CapturedApi[] => {
     try {
@@ -80,7 +91,10 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
           const url = new URL(entry.request.url);
           
           // 自动参数化路径（识别并替换硬编码的 ID）
-          const originalPath = url.pathname + url.search;
+          // GET 请求：判重只按 pathname，忽略 query
+          const originalPath = entry.request.method === 'GET'
+            ? url.pathname
+            : url.pathname + url.search;
           const paramResult = parameterizePath(originalPath);
           const finalPath = paramResult.parameterizedPath;
           
@@ -103,6 +117,51 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
           // 注意：不在这里过滤headers，统一在保存入库时根据平台设置的白名单过滤
           // 这样用户可以通过平台设置控制是否过滤以及过滤哪些headers
           
+          // 解析请求体和请求体类型
+          const postData = entry.request.postData;
+          let requestBody: any = undefined;
+          let requestMimeType: string | undefined = undefined;
+          
+          if (postData) {
+            requestMimeType = postData.mimeType;
+            const mimeTypeLower = (requestMimeType || '').toLowerCase();
+            
+            if (mimeTypeLower.includes('application/json')) {
+              // JSON 格式：尝试解析 text 为 JSON 对象
+              if (postData.text) {
+                try {
+                  requestBody = JSON.parse(postData.text);
+                } catch {
+                  requestBody = postData.text;
+                }
+              }
+            } else if (mimeTypeLower.includes('multipart/form-data') || mimeTypeLower.includes('application/x-www-form-urlencoded')) {
+              // form-data 或 urlencoded 格式：从 params 或 text 解析
+              if (postData.params && postData.params.length > 0) {
+                // 优先使用 params 数组
+                requestBody = {};
+                postData.params.forEach((param: any) => {
+                  requestBody[param.name] = param.value || '';
+                });
+              } else if (postData.text) {
+                // 如果没有 params，尝试从 text 解析
+                try {
+                  // 尝试解析为 URL 编码格式
+                  const params = new URLSearchParams(postData.text);
+                  requestBody = {};
+                  params.forEach((value, key) => {
+                    requestBody[key] = value;
+                  });
+                } catch {
+                  requestBody = postData.text;
+                }
+              }
+            } else {
+              // 其他格式：保留原始 text
+              requestBody = postData.text;
+            }
+          }
+          
           return {
             id: `har_${Date.now()}_${index}`,
             name: `${entry.request.method} ${url.pathname.split('/').filter(Boolean).pop() || 'api'}`,
@@ -122,7 +181,9 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
               (entry.request.queryString || []).map((q: any) => [q.name, q.value])
             ),
             // 请求体
-            requestBody: entry.request.postData?.text,
+            requestBody,
+            // 请求体 MIME 类型
+            requestMimeType,
             // 响应头（原始数据）
             responseHeaders: rawResponseHeaders,
             // 响应体
@@ -232,7 +293,7 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
     const duplicates: any[] = [];
     
     apis.forEach(api => {
-      const key = `${api.method}-${api.path}`;
+      const key = getApiIdentityKey(api);
       if (seen.has(key)) {
         duplicates.push(api);
         console.log(`⚠️ [去重] 发现重复API: ${api.method} ${api.path} - ${api.name}`);
@@ -283,6 +344,7 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
         platform: classification.platform,
         component: classification.component,
         feature: classification.feature,
+        subFeature: classification.subFeature?.trim() || undefined,
         importSource: 'har',
       }));
       
@@ -399,9 +461,9 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
           }
         } else {
           // 普通创建模式：基于 method + path 去重
-          const key = `${api.method}|${api.path}`;
+          const key = getApiIdentityKey(api);
           const existingIndex = acc.findIndex(
-            (a: any) => !a._overwrite && `${a.method}|${a.path}` === key
+            (a: any) => !a._overwrite && getApiIdentityKey(a) === key
           );
           if (existingIndex === -1) {
             acc.push(api);
@@ -575,7 +637,7 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
 
   return (
     <>
-      <Card className="hover:shadow-md transition-shadow">
+      <Card className="hover:shadow-md transition-shadow border-[#e5e7eb] dark:border-[#4b5563]">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-lg">
@@ -680,7 +742,7 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
                 </div>
 
                 {/* 全选操作 */}
-                <div className="flex items-center justify-between pb-2 border-b">
+                <div className="flex items-center justify-between pb-2 border-b border-[#e5e7eb] dark:border-[#4b5563]">
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="select-all"
@@ -714,7 +776,7 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
                     {filteredApis.map((api) => (
                     <div
                       key={api.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                      className={`flex items-start gap-3 p-3 rounded-lg border border-[#e5e7eb] dark:border-[#4b5563] transition-colors cursor-pointer ${
                         selectedIds.has(api.id)
                           ? 'bg-primary/5 border-primary/20'
                           : 'hover:bg-muted/50'
@@ -773,11 +835,12 @@ export function HarImport({ isRecording, onImport }: HarImportProps) {
                 value={classification}
                 onChange={setClassification}
                 allowCreate={true}
+                enableSubFeature={true}
               />
             </div>
           )}
 
-          <div className="px-6 py-4 border-t bg-background">
+          <div className="px-6 py-4 border-t border-[#e5e7eb] dark:border-[#4b5563] bg-background">
             <DialogFooter>
               <Button
                 type="button"

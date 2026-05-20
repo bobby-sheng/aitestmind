@@ -46,7 +46,7 @@ function tryFixJSON(jsonStr: string): string {
   // 4. 移除 undefined
   fixed = fixed.replace(/:\s*undefined\s*([,}])/g, ': null$1');
   
-  // 5. 修复括号不对称问题
+  // 5. 修复括号不对称 + 未闭合字符串（token 截断）
   fixed = fixBrackets(fixed);
   
   return fixed;
@@ -90,7 +90,13 @@ function fixBrackets(jsonStr: string): string {
   }
   
   let fixed = jsonStr;
-  
+
+  // 修复未闭合的字符串（token 截断导致字符串结尾缺少引号）
+  if (inString) {
+    console.log(`  🔧 检测到未闭合的字符串，自动补全 '"'`);
+    fixed += '"';
+  }
+
   // 修复缺失的闭合括号
   const missingCurly = brackets['{'] - brackets['}'];
   const missingSquare = brackets['['] - brackets[']'];
@@ -134,6 +140,11 @@ export async function POST(request: NextRequest) {
     async start(controller) {
   try {
     const { userInput, testType = 'api' } = await request.json();
+
+    // 当前用户 ID，用于 AI 生成的用例编排设置创建人/更新人
+    const { getCurrentUser } = await import('@/lib/auth');
+    const currentUser = await getCurrentUser(request);
+    const currentUserId = currentUser?.user?.id ?? null;
 
     if (!userInput || !userInput.trim()) {
           sendSSE(controller, {
@@ -205,6 +216,7 @@ export async function POST(request: NextRequest) {
           role: 'assistant',
           content: response.content || null,
           tool_calls: response.toolCalls,
+          reasoning_content: response.reasoningContent,
         });
 
         // 处理所有工具调用
@@ -357,9 +369,10 @@ export async function POST(request: NextRequest) {
               console.log('📥 [Route] 完整参数:', JSON.stringify(functionArgs, null, 2));
               console.log('='.repeat(120) + '\n');
               
-              // 调用函数并传入进度回调
+              // 调用函数并传入进度回调和当前用户 ID（用于创建人/更新人）
               functionResult = await assembleAndCreateTestCases({
                 ...functionArgs,
+                userId: currentUserId,
                 onProgress: (progress) => {
                   console.log(`📊 [Route] 进度更新: ${progress.step}/${progress.totalSteps} - ${progress.message}`);
                   if (progress.detail) {
@@ -461,6 +474,7 @@ export async function POST(request: NextRequest) {
         messages.push({
           role: 'assistant',
               content: finalContent,
+              reasoning_content: response.reasoningContent,
             });
 
             // 发送总结

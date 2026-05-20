@@ -4,7 +4,7 @@ import { memo, useState, useEffect, useRef } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { ParallelNodeData } from '@/types/test-case';
-import { GitBranch, Settings, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { GitBranch, Settings, Loader2, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface ExecutionStatus {
@@ -84,18 +84,34 @@ function ParallelNode({ data, selected, id }: NodeProps<ParallelNodeData>) {
     }
   };
 
-  // 不在节点内处理点击，完全交给 React Flow
+  // 处理删除节点
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const deleteEvent = new CustomEvent('node-delete', { 
+      detail: { nodeId: id },
+      bubbles: true 
+    });
+    document.dispatchEvent(deleteEvent);
+  };
 
   return (
     <div
       className={`
-        min-w-[200px] rounded-lg border-2 bg-background shadow-md transition-all duration-200 relative
+        group min-w-[200px] rounded-lg border-2 bg-background shadow-md transition-all duration-200 relative
         ${selected ? 'border-primary' : getBorderColor()}
         ${isDragOver ? 'scale-105 border-purple-600 border-4 shadow-2xl bg-purple-50 dark:bg-purple-950' : ''}
       `}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* 删除按钮 */}
+      <button
+        onClick={handleDelete}
+        className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-md hover:scale-110 z-10"
+        title={t('delete')}
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
       {/* 输入连接点 */}
       <Handle
         type="target"
@@ -138,7 +154,7 @@ function ParallelNode({ data, selected, id }: NodeProps<ParallelNodeData>) {
 
         {/* API 列表 */}
         {apiCount > 0 && (
-          <div className="space-y-1.5 border-t pt-2">
+          <div className="space-y-1.5 border-t border-[#e5e7eb] dark:border-[#4b5563] pt-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{t('concurrentExec')}</span>
               <Badge variant="outline" className="text-xs">
@@ -206,7 +222,7 @@ function ParallelNode({ data, selected, id }: NodeProps<ParallelNodeData>) {
 
         {/* 失败策略 */}
         {nodeData.failureStrategy && (
-          <div className="text-xs flex items-center gap-1.5 pt-1 border-t text-muted-foreground">
+          <div className="text-xs flex items-center gap-1.5 pt-1 border-t border-[#e5e7eb] dark:border-[#4b5563] text-muted-foreground">
             <Settings className="w-3 h-3" />
             <span>
               {t('failureStrategy')}: {nodeData.failureStrategy === 'stopAll' ? t('stopAll') : t('continueAll')}

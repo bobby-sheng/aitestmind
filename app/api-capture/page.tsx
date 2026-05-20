@@ -274,7 +274,10 @@ export default function ApiCapturePage() {
         throw new Error(data.error || t('startFailed'));
       }
     } catch (error: any) {
-      console.error(t('startFailed'), error);
+      // Playwright 未安装时由 RecordingSection 展示安装提示，不再在控制台打 error
+      if ((error as any)?.errorType !== 'PLAYWRIGHT_NOT_INSTALLED') {
+        console.error(t('startFailed'), error);
+      }
       throw error;
     }
   };

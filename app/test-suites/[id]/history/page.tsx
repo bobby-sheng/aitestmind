@@ -22,6 +22,7 @@ interface ExecutionRecord {
   failedSteps: number;
   duration?: number;
   triggeredBy: string;
+  triggerUser?: string | null;
   environmentSnapshot: any;
 }
 
@@ -45,6 +46,7 @@ export default function TestSuiteHistoryPage() {
   const router = useRouter();
   const { toast } = useToast();
   const t = useTranslations('testSuites');
+  const tCommon = useTranslations('common');
   const suiteId = params.id as string;
 
   const [suite, setSuite] = useState<any>(null);
@@ -209,7 +211,7 @@ export default function TestSuiteHistoryPage() {
                   return (
                     <div
                       key={execution.id}
-                      className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                      className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg p-4 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
@@ -225,6 +227,11 @@ export default function TestSuiteHistoryPage() {
                                   ? t('globalConfig')
                                   : t('independentConfig')}
                               </Badge>
+                            )}
+                            {execution.triggerUser && (
+                              <span className="text-sm text-muted-foreground">
+                                {tCommon('triggerUser')}: {execution.triggerUser}
+                              </span>
                             )}
                           </div>
 

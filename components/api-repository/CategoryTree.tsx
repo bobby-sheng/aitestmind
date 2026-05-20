@@ -47,9 +47,9 @@ export function CategoryTree({
   const t = useTranslations('apiRepository.categoryTree');
 
   return (
-    <div className="h-full flex flex-col border-r bg-muted/10">
+    <div className="h-full flex flex-col border-r border-[#e5e7eb] dark:border-[#4b5563] bg-muted/10">
       {/* 头部 */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b border-[#e5e7eb] dark:border-[#4b5563]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-lg">{t('title')}</h3>
           <Button 

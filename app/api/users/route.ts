@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     if (result.user.role !== 'admin') {
       const duration = Date.now() - startTime;
       logger.apiResponse('GET', '/api/users', OperationType.READ, 403, duration);
-      logger.warn(OperationType.AUTH, `非管理员尝试访问用户列表: ${result.user.username}`);
+      logger.warn(OperationType.AUTH, `非管理员尝试访问用户列表: ${result.user.loginName}`);
       
       return NextResponse.json(
         { error: '权限不足' },
@@ -46,9 +46,8 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { username: { contains: search } },
+        { loginName: { contains: search } },
         { email: { contains: search } },
-        { realName: { contains: search } },
       ];
     }
 
@@ -67,9 +66,9 @@ export async function GET(request: NextRequest) {
         where,
         select: {
           id: true,
+          loginName: true,
           username: true,
           email: true,
-          realName: true,
           role: true,
           status: true,
           createdAt: true,
@@ -133,7 +132,7 @@ export async function POST(request: NextRequest) {
     if (result.user.role !== 'admin') {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/users', OperationType.CREATE, 403, duration);
-      logger.warn(OperationType.AUTH, `非管理员尝试创建用户: ${result.user.username}`);
+      logger.warn(OperationType.AUTH, `非管理员尝试创建用户: ${result.user.loginName}`);
       
       return NextResponse.json(
         { error: '权限不足' },
@@ -142,30 +141,30 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { username, password, email, realName, role, status } = body;
+    const { loginName, password, email, username, role, status } = body;
     
-    logger.apiRequest('POST', '/api/users', OperationType.CREATE, { username, email, role });
+    logger.apiRequest('POST', '/api/users', OperationType.CREATE, { loginName, email, role });
 
     // 验证必填字段
-    if (!username || !password) {
+    if (!loginName || !password) {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/users', OperationType.CREATE, 400, duration);
       logger.warn(OperationType.CREATE, '创建用户失败: 缺少必填字段');
       
       return NextResponse.json(
-        { error: '用户名和密码是必填项' },
+        { error: '登录名和密码是必填项' },
         { status: 400 }
       );
     }
 
-    // 验证用户名长度
-    if (username.length < 3 || username.length > 20) {
+    // 验证登录名长度
+    if (loginName.length < 3 || loginName.length > 20) {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/users', OperationType.CREATE, 400, duration);
-      logger.warn(OperationType.CREATE, `创建用户失败: 用户名长度不符 - ${username}`);
+      logger.warn(OperationType.CREATE, `创建用户失败: 登录名长度不符 - ${loginName}`);
       
       return NextResponse.json(
-        { error: '用户名长度必须在3-20个字符之间' },
+        { error: '登录名长度必须在3-20个字符之间' },
         { status: 400 }
       );
     }
@@ -182,19 +181,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查用户名是否已存在
-    logger.db(OperationType.READ, 'User', 'findUnique', { username });
+    // 检查登录名是否已存在
+    logger.db(OperationType.READ, 'User', 'findUnique', { loginName });
     const existingUser = await prisma.user.findUnique({
-      where: { username },
+      where: { loginName },
     });
 
     if (existingUser) {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/users', OperationType.CREATE, 409, duration);
-      logger.warn(OperationType.CREATE, `创建用户失败: 用户名已存在 - ${username}`);
+      logger.warn(OperationType.CREATE, `创建用户失败: 登录名已存在 - ${loginName}`);
       
       return NextResponse.json(
-        { error: '用户名已存在' },
+        { error: '登录名已存在' },
         { status: 409 }
       );
     }
@@ -221,21 +220,21 @@ export async function POST(request: NextRequest) {
     // 创建用户
     const hashedPassword = hashPassword(password);
 
-    logger.db(OperationType.CREATE, 'User', 'create', { username, role: role || 'user' });
+    logger.db(OperationType.CREATE, 'User', 'create', { loginName, role: role || 'user' });
     const user = await prisma.user.create({
       data: {
-        username,
+        loginName,
         password: hashedPassword,
+        username: username || null,
         email: email || null,
-        realName: realName || null,
         role: role || 'user',
         status: status || 'active',
       },
       select: {
         id: true,
+        loginName: true,
         username: true,
         email: true,
-        realName: true,
         role: true,
         status: true,
         createdAt: true,
@@ -245,9 +244,9 @@ export async function POST(request: NextRequest) {
 
     const duration = Date.now() - startTime;
     logger.apiResponse('POST', '/api/users', OperationType.CREATE, 200, duration);
-    logger.success(OperationType.CREATE, `创建用户成功: ${username} (${user.role})`, {
+    logger.success(OperationType.CREATE, `创建用户成功: ${loginName} (${user.role})`, {
       userId: user.id,
-      createdBy: result.user.username
+      createdBy: result.user.loginName
     });
 
     return NextResponse.json({

@@ -45,7 +45,7 @@ export function ApiDetailDialog({ api, open, onOpenChange }: ApiDetailDialogProp
     return (
       <div className="space-y-2">
         {entries.map(([key, value]) => (
-          <div key={key} className="grid grid-cols-4 gap-4 text-sm border-b pb-2">
+          <div key={key} className="grid grid-cols-4 gap-4 text-sm border-b border-[#e5e7eb] dark:border-[#4b5563] pb-2">
             <div className="font-medium text-muted-foreground break-all">{key}:</div>
             <div className="col-span-3 break-all font-mono text-xs">{value}</div>
           </div>
@@ -184,7 +184,7 @@ export function ApiDetailDialog({ api, open, onOpenChange }: ApiDetailDialogProp
                       ) : api.mimeType?.includes('html') ? (
                         <iframe
                           srcDoc={typeof api.responseBody === 'string' ? api.responseBody : JSON.stringify(api.responseBody)}
-                          className="w-full h-96 border rounded"
+                          className="w-full h-96 border border-[#e5e7eb] dark:border-[#4b5563] rounded"
                           title="HTML Preview"
                           sandbox="allow-same-origin"
                         />

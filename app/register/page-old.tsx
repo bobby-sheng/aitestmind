@@ -98,7 +98,7 @@ export default function RegisterPage() {
             创建账号
           </CardTitle>
           <CardDescription className="text-center text-base">
-            加入 AI TestMind 开启智能测试体验
+            加入 API 智能测试平台 开启智能测试体验
           </CardDescription>
         </CardHeader>
         <CardContent>

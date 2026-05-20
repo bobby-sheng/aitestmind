@@ -63,20 +63,36 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // GET 请求：忽略 query，只按 pathname 判重
+        if (api.method?.toUpperCase() === 'GET' && apiPath) {
+          apiPath = apiPath.split('?')[0];
+        }
+
         // 参数化路径（统一格式）
         const paramResult = parameterizePath(apiPath);
         const normalizedPath = paramResult.parameterizedPath;
         const normalizedMethod = api.method.toUpperCase();
 
         // 在数据库中查找是否存在相同 method + path 的API
-        const existingApi = await prisma.api.findFirst({
-          where: {
-            method: normalizedMethod,
-            path: normalizedPath,
-            name: {
-              not: '_CLASSIFICATION_PLACEHOLDER_', // 排除占位API
-            },
+        // 方案A：对于 GET，历史数据中可能保存了带 query 的 path，这里同时匹配
+        const whereForMethodAndPath: any = {
+          method: normalizedMethod,
+          name: {
+            not: '_CLASSIFICATION_PLACEHOLDER_', // 排除占位API
           },
+        };
+
+        if (normalizedMethod === 'GET') {
+          whereForMethodAndPath.OR = [
+            { path: normalizedPath },
+            { path: { startsWith: normalizedPath + '?' } },
+          ];
+        } else {
+          whereForMethodAndPath.path = normalizedPath;
+        }
+
+        const existingApi = await prisma.api.findFirst({
+          where: whereForMethodAndPath,
           include: {
             category: true,
             tags: {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { logger, OperationType } from '@/lib/logger';
 import { getExecutorUrl } from '@/lib/config';
 
@@ -11,14 +12,19 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const category = searchParams.get('category');
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '20');
 
-    logger.apiRequest('GET', '/api/test-suites', OperationType.READ, { status, category });
+    logger.apiRequest('GET', '/api/test-suites', OperationType.READ, { status, category, page, pageSize });
 
     const where: any = {};
     if (status) where.status = status;
     if (category) where.category = category;
 
-    logger.db(OperationType.READ, 'TestSuite', 'findMany', { where });
+    // 获取总数
+    const total = await prisma.testSuite.count({ where });
+
+    logger.db(OperationType.READ, 'TestSuite', 'findMany', { where, skip: (page - 1) * pageSize, take: pageSize });
     const testSuites = await prisma.testSuite.findMany({
       where,
       include: {
@@ -41,10 +47,14 @@ export async function GET(request: Request) {
             executions: true,
           },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
       orderBy: {
         createdAt: 'desc',
       },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
 
     // 计算最后执行时间和通过率
@@ -88,6 +98,9 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       data: testSuitesWithStats,
+      total,
+      page,
+      pageSize,
     });
   } catch (error: any) {
     const duration = Date.now() - startTime;
@@ -109,6 +122,9 @@ export async function POST(request: Request) {
   const startTime = Date.now();
   
   try {
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const body = await request.json();
     const {
       name,
@@ -119,6 +135,7 @@ export async function POST(request: Request) {
       useGlobalSettings = true,
       environmentConfig,
       testCases = [],
+      runMode = 'serial',
       executionMode = 'manual',
       scheduleConfig,
       scheduleStatus,
@@ -131,73 +148,71 @@ export async function POST(request: Request) {
       testCasesCount: testCases.length 
     });
 
-    // 创建测试套件
-    logger.db(OperationType.CREATE, 'TestSuite', 'create', { name, executionMode });
-    const testSuite = await prisma.testSuite.create({
-      data: {
-        name,
-        description,
-        status,
-        category,
-        tags: tags ? JSON.stringify(tags) : null,
-        useGlobalSettings,
-        environmentConfig: environmentConfig || null,
-        executionMode,
-        scheduleConfig: scheduleConfig ? JSON.stringify(scheduleConfig) : null,
-        scheduleStatus: executionMode === 'scheduled' ? (scheduleStatus || 'active') : null,
-      },
-    });
+    // 使用事务确保创建套件和关联用例的原子性
+    logger.db(OperationType.CREATE, 'TestSuite', 'transaction', { name, executionMode, testCasesCount: testCases.length });
+    const createdSuite = await prisma.$transaction(async (tx) => {
+      const testSuite = await tx.testSuite.create({
+        data: {
+          name,
+          description,
+          status,
+          category,
+          tags: tags ? JSON.stringify(tags) : null,
+          useGlobalSettings,
+          environmentConfig: environmentConfig || null,
+          runMode,
+          executionMode,
+          scheduleConfig: scheduleConfig ? JSON.stringify(scheduleConfig) : null,
+          scheduleStatus: executionMode === 'scheduled' ? (scheduleStatus || 'active') : null,
+          ...(userId && { createdBy: userId, updatedBy: userId }),
+        },
+      });
 
-    // 创建用例关联
-    if (testCases.length > 0) {
-      await Promise.all(
-        testCases.map((tc: any, index: number) =>
-          prisma.testSuiteCase.create({
-            data: {
-              suiteId: testSuite.id,
-              testCaseId: tc.testCaseId || tc.id,
-              order: tc.order !== undefined ? tc.order : index + 1,
-              enabled: tc.enabled !== undefined ? tc.enabled : true,
-            },
-          })
-        )
-      );
-    }
+      if (testCases.length > 0) {
+        await tx.testSuiteCase.createMany({
+          data: testCases.map((tc: any, index: number) => ({
+            suiteId: testSuite.id,
+            testCaseId: tc.testCaseId || tc.id,
+            order: tc.order !== undefined ? tc.order : index + 1,
+            enabled: tc.enabled !== undefined ? tc.enabled : true,
+          })),
+        });
+      }
 
-    // 返回完整的测试套件信息
-    const createdSuite = await prisma.testSuite.findUnique({
-      where: { id: testSuite.id },
-      include: {
-        testCases: {
-          include: {
-            testCase: {
-              select: {
-                id: true,
-                name: true,
-                status: true,
-                flowConfig: true,
+      return tx.testSuite.findUnique({
+        where: { id: testSuite.id },
+        include: {
+          testCases: {
+            include: {
+              testCase: {
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                  flowConfig: true,
+                },
               },
             },
-          },
-          orderBy: {
-            order: 'asc',
+            orderBy: {
+              order: 'asc',
+            },
           },
         },
-      },
+      });
     });
 
     // 如果是定时执行模式，同步到调度器
     if (executionMode === 'scheduled' && scheduleConfig) {
       try {
-        logger.external('FastAPI', '同步调度任务', true, { suiteId: testSuite.id });
+        logger.external('FastAPI', '同步调度任务', true, { suiteId: createdSuite?.id });
         const executorUrl = getExecutorUrl(false); // 服务端调用
         await fetch(`${executorUrl}/api/schedules/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ suite_id: testSuite.id }),
+          body: JSON.stringify({ suite_id: createdSuite?.id }),
         });
       } catch (error) {
-        logger.external('FastAPI', '同步调度任务失败', false, { suiteId: testSuite.id });
+        logger.external('FastAPI', '同步调度任务失败', false, { suiteId: createdSuite?.id });
         // 不影响主流程，只记录错误
       }
     }
@@ -205,7 +220,7 @@ export async function POST(request: Request) {
     const duration = Date.now() - startTime;
     logger.apiResponse('POST', '/api/test-suites', OperationType.CREATE, 200, duration);
     logger.success(OperationType.CREATE, `创建测试套件成功: ${name}`, { 
-      suiteId: testSuite.id,
+      suiteId: createdSuite?.id,
       testCasesCount: testCases.length,
       executionMode 
     });

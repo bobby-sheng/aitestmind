@@ -8,34 +8,34 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { username, password } = body;
+    const { loginName, password } = body;
 
     // 记录登录请求
-    logger.apiRequest('POST', '/api/auth/login', OperationType.AUTH, { username });
+    logger.apiRequest('POST', '/api/auth/login', OperationType.AUTH, { loginName });
 
     // 验证必填字段
-    if (!username || !password) {
+    if (!loginName || !password) {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/auth/login', OperationType.AUTH, 400, duration);
-      logger.warn(OperationType.AUTH, '登录失败：缺少用户名或密码');
+      logger.warn(OperationType.AUTH, '登录失败：缺少登录名或密码');
       
       return NextResponse.json(
-        { error: '请输入用户名和密码' },
+        { error: '请输入登录名和密码' },
         { status: 400 }
       );
     }
 
     // 查找用户
-    logger.db(OperationType.READ, 'User', 'findUnique', { username });
+    logger.db(OperationType.READ, 'User', 'findUnique', { loginName });
     const user = await prisma.user.findUnique({
-      where: { username },
+      where: { loginName },
     });
 
     if (!user) {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/auth/login', OperationType.AUTH, 401, duration);
-      logger.auth('login', username, false);
-      logger.warn(OperationType.AUTH, `登录失败：用户不存在 - ${username}`);
+      logger.auth('login', loginName, false);
+      logger.warn(OperationType.AUTH, `登录失败：用户不存在 - ${loginName}`);
       
       return NextResponse.json(
         { error: '用户名或密码错误' },
@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
     if (!isValidPassword) {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/auth/login', OperationType.AUTH, 401, duration);
-      logger.auth('login', username, false);
-      logger.warn(OperationType.AUTH, `登录失败：密码错误 - ${username}`);
+      logger.auth('login', loginName, false);
+      logger.warn(OperationType.AUTH, `登录失败：密码错误 - ${loginName}`);
       
       return NextResponse.json(
         { error: '用户名或密码错误' },
@@ -62,8 +62,8 @@ export async function POST(request: NextRequest) {
     if (user.status !== 'active') {
       const duration = Date.now() - startTime;
       logger.apiResponse('POST', '/api/auth/login', OperationType.AUTH, 403, duration);
-      logger.auth('login', username, false);
-      logger.warn(OperationType.AUTH, `登录失败：账号已禁用 - ${username}`);
+      logger.auth('login', loginName, false);
+      logger.warn(OperationType.AUTH, `登录失败：账号已禁用 - ${loginName}`);
       
       return NextResponse.json(
         { error: '账号已被禁用，请联系管理员' },
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
     logger.apiResponse('POST', '/api/auth/login', OperationType.AUTH, 200, duration);
     logger.auth('login', user.id, true);
-    logger.success(OperationType.AUTH, `用户登录成功: ${username} (${user.role})`, { 
+    logger.success(OperationType.AUTH, `用户登录成功: ${loginName} (${user.role})`, { 
       userId: user.id,
       ipAddress,
     });
@@ -98,9 +98,8 @@ export async function POST(request: NextRequest) {
       message: '登录成功',
       user: {
         id: user.id,
-        username: user.username,
+        loginName: user.loginName,
         email: user.email,
-        realName: user.realName,
         role: user.role,
         status: user.status,
         createdAt: user.createdAt,

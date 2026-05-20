@@ -1,18 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-// 获取所有对话列表
+// 获取对话列表（仅当前用户的对话）
 export async function GET(request: NextRequest) {
   try {
+    const { getCurrentUser } = await import('@/lib/auth');
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const { searchParams } = new URL(request.url);
     const isArchived = searchParams.get('archived') === 'true';
     const isStarred = searchParams.get('starred') === 'true';
 
+    // 仅返回当前用户创建的对话；未登录则返回空列表
+    const where: any = {
+      ...(userId && { createdBy: userId }),
+      ...(searchParams.has('archived') && { isArchived }),
+      ...(searchParams.has('starred') && { isStarred }),
+    };
+    if (!userId) {
+      // 未登录时不返回任何对话
+      return NextResponse.json({
+        success: true,
+        data: [],
+      });
+    }
+
     const conversations = await prisma.conversation.findMany({
-      where: {
-        ...(searchParams.has('archived') && { isArchived }),
-        ...(searchParams.has('starred') && { isStarred }),
-      },
+      where,
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
@@ -21,6 +36,8 @@ export async function GET(request: NextRequest) {
         _count: {
           select: { messages: true },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -41,6 +58,10 @@ export async function GET(request: NextRequest) {
 // 创建新对话
 export async function POST(request: NextRequest) {
   try {
+    const { getCurrentUser } = await import('@/lib/auth');
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const body = await request.json();
     const { title, message } = body;
 
@@ -48,6 +69,7 @@ export async function POST(request: NextRequest) {
     const conversation = await prisma.conversation.create({
       data: {
         title: title || '新对话',
+        ...(userId && { createdBy: userId, updatedBy: userId }),
         messages: {
           create: message
             ? [

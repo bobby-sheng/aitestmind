@@ -34,8 +34,9 @@ export async function getApiDetail(apiId: string) {
   }
 
   // 解析 JSON 字段
-  // ⚠️ 注意：不返回 requestHeaders 和 responseHeaders，它们包含大量冗余数据（如长 JWT token）
-  // 这些数据会导致 AI 输出超出 token 限制，且对生成测试用例没有帮助
+  // 解析请求头，用于测试用例执行时传递
+  const requestHeaders = api.requestHeaders ? JSON.parse(api.requestHeaders) : null;
+  
   return {
     id: api.id,
     name: api.name,
@@ -45,6 +46,8 @@ export async function getApiDetail(apiId: string) {
     path: api.path,
     category: api.category?.name,
     tags: api.tags.map(t => t.tag.name),
+    requestHeaders, // 返回请求头，用于组装测试用例时填充默认 headers
+    requestMimeType: api.requestMimeType, // 返回请求内容类型（json/form-data 等）
     requestQuery: api.requestQuery ? JSON.parse(api.requestQuery) : null,
     requestBody: api.requestBody ? JSON.parse(api.requestBody) : null,
     responseStatus: api.responseStatus,
@@ -171,8 +174,10 @@ export async function smartSearchDeleteApi(params: {
 
 /**
  * 创建测试用例
+ * @param testCases 测试用例数据
+ * @param userId 当前用户 ID，用于设置创建人/更新人（如 AI 生成时传入当前登录用户）
  */
-export async function createTestCases(testCases: any[]) {
+export async function createTestCases(testCases: any[], userId?: string | null) {
   const created = await Promise.all(
     testCases.map(async (testCase: any) => {
       // 确保 flowConfig 中的所有节点都有 data 字段
@@ -196,6 +201,7 @@ export async function createTestCases(testCases: any[]) {
           category: testCase.category,
           tags: JSON.stringify(testCase.tags || []),
           flowConfig: JSON.stringify(flowConfig),
+          ...(userId && { createdBy: userId, updatedBy: userId }),
         },
       });
 
@@ -248,8 +254,10 @@ export type ProgressCallback = (progress: {
 export async function assembleAndCreateTestCases(params: {
   orchestrationPlan: OrchestrationPlan;
   onProgress?: ProgressCallback;
+  /** 当前用户 ID，用于设置创建人/更新人（AI 生成时传入当前登录用户） */
+  userId?: string | null;
 }) {
-  const { orchestrationPlan, onProgress } = params;
+  const { orchestrationPlan, onProgress, userId } = params;
   
   console.log('\n' + '▓'.repeat(120));
   console.log('🤖 [AI Tools] 收到编排指令，开始自动组装测试用例');
@@ -376,7 +384,7 @@ export async function assembleAndCreateTestCases(params: {
     detail: `正在保存 ${assembledTestCases.length} 个测试用例...`
   });
   
-  const created = await createTestCases(assembledTestCases);
+  const created = await createTestCases(assembledTestCases, userId);
   console.log(`✅ [AI Tools] 保存成功，已创建 ${created.length} 个测试用例`);
   
   created.forEach((tc, index) => {
@@ -540,12 +548,30 @@ export const AI_TOOLS = [
                           },
                           assertions: {
                             type: "array",
-                            description: "断言列表",
-                            items: { type: "object" }
+                            description: "断言列表（必填，每个 API 节点至少包含 1 条 status 断言）",
+                            minItems: 1,
+                            items: {
+                              type: "object",
+                              properties: {
+                                field: { type: "string", description: "字段路径，如 status、returnCode、data.id" },
+                                operator: {
+                                  type: "string",
+                                  enum: ["equals", "notEquals", "contains", "notContains", "greaterThan", "lessThan", "exists", "notExists"],
+                                  description: "比较操作符"
+                                },
+                                expected: { description: "期望值（exists/notExists 时可省略）" },
+                                expectedType: {
+                                  type: "string",
+                                  enum: ["string", "number", "boolean", "object", "array", "auto"],
+                                  description: "期望值类型"
+                                }
+                              },
+                              required: ["field", "operator"]
+                            }
                           },
                           isCleanup: { type: "boolean", description: "是否为清理节点" }
                         },
-                        required: ["id", "type"]
+                        required: ["id", "type", "assertions"]
                       }
                     },
                     edges: {

@@ -727,7 +727,7 @@ export default function ParallelConfig({ data, onChange, nodes, currentNodeId }:
                                     </div>
 
                                     {/* 变量引用说明 */}
-                                    <div className="p-3 bg-accent/50 rounded-md text-xs border border-border">
+                                    <div className="p-3 bg-accent/50 rounded-md text-xs border border-[#e5e7eb] dark:border-[#4b5563]">
                                       <p className="font-medium text-foreground mb-2">
                                         {t('howToReference')}
                                       </p>

@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 
 interface LogoProps {
   size?: "sm" | "md" | "lg" | "xl"
@@ -19,6 +20,7 @@ export function Logo({
 }: LogoProps) {
   const { theme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const t = useTranslations('nav')
 
   useEffect(() => {
     setMounted(true)
@@ -38,7 +40,7 @@ export function Logo({
     ? "/logo-dark.svg"
     : "/logo.svg"
 
-  const iconSrc = "/logo-icon.svg"
+  const iconSrc = "/1.jpg"
   const textSrc = "/logo-text.svg"
 
   if (variant === "icon") {
@@ -50,7 +52,7 @@ export function Logo({
         <div className={`relative ${animated ? 'group-hover:scale-110 transition-transform duration-300' : ''}`}>
           <Image
             src={iconSrc}
-            alt="AI TestMind Logo"
+            alt={`${t('platformTitle')} Logo`}
             width={dimensions.icon}
             height={dimensions.icon}
             priority
@@ -66,7 +68,7 @@ export function Logo({
       <div className={`relative ${className}`}>
         <Image
           src={textSrc}
-          alt="AI TestMind"
+          alt={t('platformTitle')}
           width={dimensions.full}
           height={dimensions.height}
           priority
@@ -85,7 +87,7 @@ export function Logo({
       <div className={`relative ${animated ? 'group-hover:scale-105 transition-transform duration-300' : ''}`}>
         <Image
           src={logoSrc}
-          alt="AI TestMind Logo"
+          alt={`${t('platformTitle')} Logo`}
           width={dimensions.icon}
           height={dimensions.icon}
           priority
@@ -98,15 +100,16 @@ export function Logo({
 
 // 简化的Logo组件用于登录页面
 export function LoginLogo({ className = "" }: { className?: string }) {
+  const t = useTranslations('nav')
   return (
     <div className={`relative ${className}`}>
       <Image
-        src="/logo-icon.svg"
-        alt="AI TestMind"
+        src="/3.jpg"
+        alt={t('platformTitle')}
         width={64}
         height={64}
         priority
-        className="drop-shadow-lg"
+        className="drop-shadow-lg rounded-full"
       />
     </div>
   )
@@ -114,15 +117,16 @@ export function LoginLogo({ className = "" }: { className?: string }) {
 
 // 注册页面Logo
 export function RegisterLogo({ className = "" }: { className?: string }) {
+  const t = useTranslations('nav')
   return (
     <div className={`relative ${className}`}>
       <Image
-        src="/logo-icon.svg"
-        alt="AI TestMind"
+        src="/3.jpg"
+        alt={t('platformTitle')}
         width={64}
         height={64}
         priority
-        className="drop-shadow-lg"
+        className="drop-shadow-lg rounded-full"
       />
     </div>
   )

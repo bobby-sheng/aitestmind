@@ -22,7 +22,7 @@ import { Clock, Calendar, Repeat } from 'lucide-react';
 
 interface ScheduleConfig {
   type: 'once' | 'recurring';
-  executeAt?: string; // ISO 8601 datetime for 'once'
+  executeAt?: string; // 'YYYY-MM-DDTHH:mm:ss' (no timezone) or ISO 8601
   frequency?: 'daily' | 'weekly' | 'monthly'; // for 'recurring'
   time?: string; // HH:mm format
   weekdays?: number[]; // 0-6, 0=Monday
@@ -107,10 +107,14 @@ export function ScheduleConfig({
 
     if (scheduleType === 'once') {
       if (executeDate && executeTime) {
-        const dateTime = `${executeDate}T${executeTime}:00`;
+        // IMPORTANT:
+        // We persist a "local date-time string" without timezone (e.g. 2026-02-26T09:00:00)
+        // and persist the selected timezone separately. The backend localizes it to that timezone.
+        // This avoids browser-local timezone affecting the stored absolute schedule.
+        const dateTimeLocal = `${executeDate}T${executeTime}:00`;
         onChange({
           type: 'once',
-          executeAt: new Date(dateTime).toISOString(),
+          executeAt: dateTimeLocal,
           timezone,
         });
       }
@@ -363,17 +367,9 @@ export function ScheduleConfig({
               <p className="text-muted-foreground">
                 {executeDate && executeTime
                   ? t('executeOnce', {
-                      time: new Date(`${executeDate}T${executeTime}`).toLocaleString(
-                        locale === 'zh' ? 'zh-CN' : 'en-US',
-                        {
-                          timeZone: timezone,
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        }
-                      ),
+                      // 这里直接展示用户选定的本地日期+时间，再配合下方的时区文案，
+                      // 与后端按 timezone 解释的行为保持一致，避免浏览器本地时区干扰。
+                      time: `${executeDate} ${executeTime}`,
                     })
                   : t('selectExecuteDateTime')}
               </p>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { CapturedApi } from '@/types/har';
 import { safeJsonStringify } from '@/lib/json-utils';
 import { parameterizePath } from '@/lib/path-parameterization';
@@ -13,6 +14,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   try {
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const body = await request.json();
     const { apis } = body as { apis: Array<CapturedApi & { 
       id?: string;
@@ -23,6 +27,7 @@ export async function POST(request: NextRequest) {
       platform?: string;
       component?: string;
       feature?: string;
+      subFeature?: string;
       importSource?: string;
       _overwrite?: boolean;
     }> };
@@ -52,7 +57,12 @@ export async function POST(request: NextRequest) {
         } catch {}
 
         // 自动参数化路径（如果还没有参数化）
-        const paramResult = parameterizePath(api.path);
+        // 方案A：GET 请求只按 pathname 判重/存储，忽略 query
+        const rawPath = api.path || '';
+        const pathForParam = api.method.toUpperCase() === 'GET'
+          ? rawPath.split('?')[0]
+          : rawPath;
+        const paramResult = parameterizePath(pathForParam);
         const finalPath = paramResult.parameterizedPath;
         
         // 如果路径被参数化，记录日志
@@ -84,6 +94,7 @@ export async function POST(request: NextRequest) {
             platform: (api as any).platform || null,
             component: (api as any).component || null,
             feature: (api as any).feature || null,
+            subFeature: (api as any).subFeature || null,
             
             // 导入来源
             importSource: (api as any).importSource || 'har',
@@ -92,7 +103,11 @@ export async function POST(request: NextRequest) {
             requestHeaders: safeJsonStringify(filteredHeaders),
             requestQuery: safeJsonStringify(api.queryParams),
             requestBody: safeJsonStringify(api.requestBody),
-            requestMimeType: api.mimeType || null,
+            // 优先使用请求体的 mimeType，如果没有则从请求头获取 Content-Type
+            requestMimeType: (api as any).requestMimeType || 
+                            (filteredHeaders as any)['Content-Type'] || 
+                            (filteredHeaders as any)['content-type'] || 
+                            null,
             
             // 响应信息
             responseStatus: api.status || null,
@@ -116,12 +131,12 @@ export async function POST(request: NextRequest) {
           let savedApi;
           if ((api as any)._overwrite && api.id) {
             // 覆盖模式：更新现有API
-            console.log(`🔄 [覆盖模式] 更新API: ${api.id} - ${api.name} | 分类: ${apiData.platform}/${apiData.component}/${apiData.feature}`);
+            console.log(`🔄 [覆盖模式] 更新API: ${api.id} - ${api.name} | 分类: ${apiData.platform}/${apiData.component}/${apiData.feature}/${apiData.subFeature || '-'}`);
             
             try {
               savedApi = await prisma.api.update({
                 where: { id: api.id },
-                data: apiData,
+                data: { ...apiData, ...(userId && { updatedBy: userId }) },
         });
               console.log(`✅ [覆盖成功] API已更新: ${savedApi.id} - ${savedApi.name}`);
             } catch (updateError: any) {
@@ -132,7 +147,7 @@ export async function POST(request: NextRequest) {
             // 创建新API
             console.log(`➕ [创建模式] 创建新API: ${api.name}`);
             savedApi = await prisma.api.create({
-              data: apiData,
+              data: { ...apiData, ...(userId && { createdBy: userId, updatedBy: userId }) },
             });
             console.log(`✅ [创建成功] API已创建: ${savedApi.id} - ${savedApi.name}`);
           }

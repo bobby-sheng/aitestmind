@@ -19,11 +19,11 @@ export default function RegisterPage() {
   const locale = useLocale()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
+    loginName: "",
     username: "",
     password: "",
     confirmPassword: "",
     email: "",
-    realName: "",
   })
 
   const toggleLocale = () => {
@@ -54,10 +54,10 @@ export default function RegisterPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username: formData.username,
+          loginName: formData.loginName,
+          username: formData.username || undefined,
           password: formData.password,
           email: formData.email || undefined,
-          realName: formData.realName || undefined,
         }),
       })
 
@@ -122,23 +122,42 @@ export default function RegisterPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium">
-                {t('username')} <span className="text-red-400">*</span>
+              <Label htmlFor="loginName" className="text-sm font-medium">
+                {t('loginName')} <span className="text-red-400">*</span>
               </Label>
               <div className="relative group">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
                 <Input
-                  id="username"
+                  id="loginName"
                   type="text"
-                  placeholder={t('usernameHint')}
-                  value={formData.username}
+                  placeholder={t('loginNameHint')}
+                  value={formData.loginName}
                   onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
+                    setFormData({ ...formData, loginName: e.target.value })
                   }
                   required
                   disabled={loading}
                   minLength={3}
                   maxLength={20}
+                  className="pl-10 h-11 bg-background/50 border-blue-500/20 focus:border-blue-500 transition-all"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username" className="text-sm font-medium">
+                {t('username')} <span className="text-muted-foreground text-xs">({t('optional')})</span>
+              </Label>
+              <div className="relative group">
+                <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder={t('usernamePlaceholder')}
+                  value={formData.username}
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
+                  }
+                  disabled={loading}
                   className="pl-10 h-11 bg-background/50 border-blue-500/20 focus:border-blue-500 transition-all"
                 />
               </div>
@@ -198,25 +217,6 @@ export default function RegisterPage() {
                   value={formData.email}
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
-                  }
-                  disabled={loading}
-                  className="pl-10 h-11 bg-background/50 border-blue-500/20 focus:border-blue-500 transition-all"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="realName" className="text-sm font-medium">
-                {t('realName')} <span className="text-muted-foreground text-xs">({t('optional')})</span>
-              </Label>
-              <div className="relative group">
-                <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
-                <Input
-                  id="realName"
-                  type="text"
-                  placeholder={t('realNamePlaceholder')}
-                  value={formData.realName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, realName: e.target.value })
                   }
                   disabled={loading}
                   className="pl-10 h-11 bg-background/50 border-blue-500/20 focus:border-blue-500 transition-all"

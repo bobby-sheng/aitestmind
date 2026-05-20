@@ -20,6 +20,7 @@ interface StepExecution {
   requestUrl?: string;
   requestMethod?: string;
   requestHeaders?: any;
+  requestParams?: any;
   requestBody?: any;
   responseStatus?: number;
   responseHeaders?: any;
@@ -147,11 +148,11 @@ export default function CaseExecutionDialog({
 
   const loadExecutionLogs = async (stepExecutionId: string) => {
     try {
-      const response = await fetch(`/api/executions/logs?stepExecutionId=${stepExecutionId}`);
+      const response = await fetch(`/api/execution-logs?stepExecutionId=${stepExecutionId}`);
       const result = await response.json();
       
       if (result.success) {
-        setExecutionLogs(result.data || []);
+        setExecutionLogs(result.logs || []);
       } else {
         setExecutionLogs([]);
       }
@@ -190,7 +191,7 @@ export default function CaseExecutionDialog({
 
         <div className="grid grid-cols-3 gap-4 h-[calc(95vh-8rem)]">
           {/* 左侧：流程图画布 */}
-          <div className="col-span-2 border rounded-lg overflow-hidden bg-muted/20">
+          <div className="col-span-2 border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg overflow-hidden bg-muted/20">
             <FlowCanvas
               initialNodes={nodes}
               initialEdges={edges}
@@ -205,8 +206,8 @@ export default function CaseExecutionDialog({
           </div>
 
           {/* 右侧：步骤执行详情 */}
-          <div className="border rounded-lg overflow-hidden flex flex-col">
-            <div className="p-4 border-b bg-muted/50">
+          <div className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-[#e5e7eb] dark:border-[#4b5563] bg-muted/50">
               <h3 className="font-semibold">
                 {selectedStepExecution ? t('stepExecutionDetails') : t('clickNodeToViewDetails')}
               </h3>
@@ -222,25 +223,101 @@ export default function CaseExecutionDialog({
                         <CardTitle className="text-sm">{t('requestInfo')}</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2 text-sm">
-                        <div>
-                          <div className="text-muted-foreground mb-1">URL:</div>
-                          <code className="text-xs bg-muted p-2 rounded block break-all">
-                            {selectedStepExecution.requestMethod} {selectedStepExecution.requestUrl}
-                          </code>
-                        </div>
+                        {(() => {
+                          const isGetRequest = selectedStepExecution.requestMethod?.toUpperCase() === 'GET';
+                          
+                          // 构建完整URL（GET请求包含查询参数）
+                          let fullUrl = selectedStepExecution.requestUrl || '';
+                          if (isGetRequest && selectedStepExecution.requestParams && typeof selectedStepExecution.requestParams === 'object') {
+                            const params = selectedStepExecution.requestParams;
+                            const paramKeys = Object.keys(params);
+                            if (paramKeys.length > 0) {
+                              const queryString = paramKeys
+                                .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+                                .join('&');
+                              const separator = fullUrl.includes('?') ? '&' : '?';
+                              fullUrl = `${fullUrl}${separator}${queryString}`;
+                            }
+                          }
+                          
+                          return (
+                            <div>
+                              <div className="text-muted-foreground mb-1">URL:</div>
+                              <code className="text-xs bg-muted p-2 rounded block break-all">
+                                {selectedStepExecution.requestMethod} {fullUrl}
+                              </code>
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const isGetRequest = selectedStepExecution.requestMethod?.toUpperCase() === 'GET';
+                          
+                          // GET请求不显示Request Parameters
+                          if (isGetRequest) {
+                            return null;
+                          }
+                          
+                          // 判断是否为form-data或x-www-form-urlencoded类型
+                          const contentType = selectedStepExecution.requestHeaders?.['Content-Type'] || 
+                                            selectedStepExecution.requestHeaders?.['content-type'] || '';
+                          const contentTypeLower = contentType.toLowerCase();
+                          const isFormDataByHeader = contentTypeLower.includes('multipart/form-data');
+                          const isUrlEncodedByHeader = contentTypeLower.includes('application/x-www-form-urlencoded');
+                          
+                          // 如果Content-Type不存在，但requestBody是对象，也可能是form类型
+                          const hasRequestBody = selectedStepExecution.requestBody && typeof selectedStepExecution.requestBody === 'object';
+                          // 如果requestBody是对象且不是典型的JSON结构（没有嵌套对象/数组），可能是form类型
+                          const isFormTypeByBody = hasRequestBody && !contentTypeLower.includes('application/json');
+                          
+                          const isFormData = isFormDataByHeader;
+                          const isUrlEncoded = isUrlEncodedByHeader || (isFormTypeByBody && !isFormDataByHeader);
+                          const isFormType = isFormData || isUrlEncoded;
+                          
+                          // 合并请求参数：包括查询参数和表单参数
+                          const allParams: Record<string, any> = {};
+                          if (selectedStepExecution.requestParams && typeof selectedStepExecution.requestParams === 'object') {
+                            Object.assign(allParams, selectedStepExecution.requestParams);
+                          }
+                          // 如果是form类型，将requestBody合并到请求参数中
+                          if (isFormType && hasRequestBody) {
+                            Object.assign(allParams, selectedStepExecution.requestBody);
+                          }
+                          
+                          return (
+                            <>
+                              {/* 请求参数：包括查询参数和表单参数 */}
+                              {Object.keys(allParams).length > 0 && (
+                                <div>
+                                  <div className="text-muted-foreground mb-1">
+                                    Request Parameters
+                                    {isFormType && (
+                                      <span className="ml-2 text-xs">
+                                        ({isFormData ? 'multipart/form-data' : 'application/x-www-form-urlencoded'})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
+                                    {JSON.stringify(allParams, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              {/* 如果requestBody存在但不是form类型，显示为Body */}
+                              {!isFormType && selectedStepExecution.requestBody && (
+                                <div>
+                                  <div className="text-muted-foreground mb-1">Body:</div>
+                                  <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
+                                    {JSON.stringify(selectedStepExecution.requestBody, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                         {selectedStepExecution.requestHeaders && Object.keys(selectedStepExecution.requestHeaders).length > 0 && (
                           <div>
                             <div className="text-muted-foreground mb-1">Headers:</div>
                             <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
                               {JSON.stringify(selectedStepExecution.requestHeaders, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                        {selectedStepExecution.requestBody && (
-                          <div>
-                            <div className="text-muted-foreground mb-1">Body:</div>
-                            <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
-                              {JSON.stringify(selectedStepExecution.requestBody, null, 2)}
                             </pre>
                           </div>
                         )}
@@ -406,7 +483,7 @@ export default function CaseExecutionDialog({
                               >
                                 {log.level}
                               </Badge>
-                              <span className="flex-1">{log.message}</span>
+                              <span className="flex-1 break-words">{log.message}</span>
                             </div>
                             {log.details && (
                               <pre className="mt-1 text-xs opacity-75 whitespace-pre-wrap">

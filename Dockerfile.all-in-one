@@ -1,5 +1,5 @@
 # ================================
-# AI TestMind - All-in-One Dockerfile
+# API 智能测试平台 - All-in-One Dockerfile
 # 前端 + 执行器 单镜像部署
 # 包含自动数据库初始化和测试数据
 # 国内网络环境优化版

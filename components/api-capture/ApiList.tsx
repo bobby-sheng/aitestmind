@@ -97,7 +97,7 @@ export function ApiList({ apis, onDelete, onClearAll, onViewDetail, onBatchSave 
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
 
   return (
-    <Card>
+    <Card className="border-[#e5e7eb] dark:border-[#4b5563]">
       <CardHeader>
         <div className="flex flex-col gap-4">
           {/* 第一行：标题和操作按钮 */}
@@ -198,7 +198,7 @@ export function ApiList({ apis, onDelete, onClearAll, onViewDetail, onBatchSave 
 
               {selectedIds.size > 0 && (
                 <>
-                  <div className="h-4 w-px bg-border" />
+                  <div className="h-4 w-px bg-[#e5e7eb] dark:bg-[#4b5563]" />
                   <Button
                     size="sm"
                     onClick={handleBatchSave}
@@ -242,7 +242,7 @@ export function ApiList({ apis, onDelete, onClearAll, onViewDetail, onBatchSave 
               return (
               <div 
                 key={api.id || index} 
-                className={`flex items-start gap-4 p-4 border rounded-lg transition-all ${
+                className={`flex items-start gap-4 p-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg transition-all ${
                   isSelected 
                     ? 'bg-primary/5 border-primary/30' 
                     : 'hover:bg-accent/50'
@@ -290,6 +290,15 @@ export function ApiList({ apis, onDelete, onClearAll, onViewDetail, onBatchSave 
                   </div>
                 </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => onDelete(originalIndex)}
+                      className="hover:bg-destructive/10"
+                      aria-label={t('delete')}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                     {onViewDetail && (
                       <Button 
                         size="sm" 
@@ -299,14 +308,6 @@ export function ApiList({ apis, onDelete, onClearAll, onViewDetail, onBatchSave 
                         {t('viewDetails')}
                       </Button>
                     )}
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      onClick={() => onDelete(originalIndex)}
-                      className="hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
                   </div>
                 </div>
               </div>

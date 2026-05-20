@@ -274,7 +274,7 @@ export default function ExecutionLogConsole({
 
     if (isCollapsed && index === logs.length - 101) {
       return (
-        <div key={`expand-${index}`} className="py-2 px-3 text-center border-y">
+        <div key={`expand-${index}`} className="py-2 px-3 text-center border-y border-[#e5e7eb] dark:border-[#4b5563]">
           <Button
             variant="ghost"
             size="sm"
@@ -397,7 +397,7 @@ export default function ExecutionLogConsole({
             className="h-[600px] bg-muted/30"
             ref={scrollRef}
           >
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-[#e5e7eb] dark:divide-[#4b5563]">
               {logs.map((log, index) => renderLogEntry(log, index))}
             </div>
           </ScrollArea>

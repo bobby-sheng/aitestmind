@@ -23,6 +23,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { X, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { FourLayerSelector } from '@/components/api-repository/FourLayerSelector';
 
 interface ApiEditDialogProps {
   open: boolean;
@@ -52,67 +53,19 @@ export function ApiEditDialog({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    method: 'GET',
+    url: '',
     path: '',
     platform: '',
     component: '',
     feature: '',
+    subFeature: '',
     selectedTags: [] as string[],
   });
+
+  // HTTP 方法列表
+  const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
   const [tagSearchTerm, setTagSearchTerm] = useState('');
-
-  // 从 categories（预定义分类）和 allApis（已有API）中提取所有可用的分类选项
-  // 合并两个数据源，确保显示所有可用的平台
-  const platforms = Array.from(
-    new Set([
-      ...categories.filter(c => c.platform).map(c => c.platform),
-      ...allApis.filter(a => a.platform).map(a => a.platform)
-    ])
-  ).sort();
-
-  // 调试日志
-  if (open) {
-    console.log('🔍 ApiEditDialog 数据加载情况:');
-    console.log('  - categories 数量:', categories.length);
-    console.log('  - allApis 数量:', allApis.length);
-    console.log('  - 提取的平台列表:', platforms);
-    console.log('  - categories 详情:', categories);
-  }
-
-  const components = formData.platform
-    ? Array.from(
-        new Set([
-          ...categories
-            .filter(c => c.platform === formData.platform && c.component)
-            .map(c => c.component),
-          ...allApis
-            .filter(a => a.platform === formData.platform && a.component)
-            .map(a => a.component)
-        ])
-      ).sort()
-    : [];
-
-  const features = formData.platform && formData.component
-    ? Array.from(
-        new Set([
-          ...categories
-            .filter(
-              c =>
-                c.platform === formData.platform &&
-                c.component === formData.component &&
-                c.feature
-            )
-            .map(c => c.feature),
-          ...allApis
-            .filter(
-              a =>
-                a.platform === formData.platform &&
-                a.component === formData.component &&
-                a.feature
-            )
-            .map(a => a.feature)
-        ])
-      ).sort()
-    : [];
 
   useEffect(() => {
     if (open) {
@@ -126,20 +79,26 @@ export function ApiEditDialog({
       setFormData({
         name: api.name || '',
         description: api.description || '',
+        method: api.method || 'GET',
+        url: api.url || '',
         path: api.path || '',
         platform: api.platform || '',
         component: api.component || '',
         feature: api.feature || '',
+        subFeature: api.subFeature || '',
         selectedTags: api.tags?.map((t: any) => t.tagId) || [],
       });
     } else {
       setFormData({
         name: '',
         description: '',
+        method: 'GET',
+        url: '',
         path: '',
         platform: '',
         component: '',
         feature: '',
+        subFeature: '',
         selectedTags: [],
       });
     }
@@ -160,10 +119,13 @@ export function ApiEditDialog({
         body: JSON.stringify({
           name: formData.name,
           description: formData.description,
+          method: formData.method,
+          url: formData.url,
           path: formData.path,
           platform: formData.platform || null,
           component: formData.component || null,
           feature: formData.feature || null,
+          subFeature: formData.subFeature || null,
           tags: formData.selectedTags,
         }),
       });
@@ -271,10 +233,53 @@ export function ApiEditDialog({
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
+          {api?.createdByUser || api?.updatedByUser ? (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+              {api?.createdByUser && <span>{tCommon('createdBy')}: {api.createdByUser.username || api.createdByUser.loginName}</span>}
+              {api?.updatedByUser && <span>{tCommon('updatedBy')}: {api.updatedByUser.username || api.updatedByUser.loginName}</span>}
+            </div>
+          ) : null}
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {/* 请求方法和URL */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="method">{t('method')} *</Label>
+                <Select
+                  value={formData.method}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, method: value })
+                  }
+                >
+                  <SelectTrigger id="method">
+                    <SelectValue placeholder={t('selectMethod')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HTTP_METHODS.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 sm:col-span-3">
+                <Label htmlFor="url">URL *</Label>
+                <Input
+                  id="url"
+                  value={formData.url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, url: e.target.value })
+                  }
+                  placeholder={t('urlPlaceholder')}
+                  className="font-mono text-sm"
+                  required
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="name">{t('apiName')} *</Label>
               <Input
@@ -321,101 +326,34 @@ export function ApiEditDialog({
               </div>
             </div>
 
-            {/* 四层分类 - 级联下拉选择 */}
-            <div className="space-y-3 border rounded-md p-4 bg-muted/30">
-              <Label className="text-base font-semibold">{t('classification')}</Label>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {/* 平台 */}
-                <div className="space-y-2">
-                  <Label htmlFor="platform" className="text-xs">{t('platform')}</Label>
-                  <Select
-                    value={formData.platform}
-                    onValueChange={(value) => {
-                      setFormData({
-                        ...formData,
-                        platform: value,
-                        component: '', // 重置组件
-                        feature: '', // 重置功能
-                      });
-                    }}
-                  >
-                    <SelectTrigger id="platform">
-                      <SelectValue placeholder={t('platformPlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {platforms.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* 组件 */}
-                <div className="space-y-2">
-                  <Label htmlFor="component" className="text-xs">{t('component')}</Label>
-                  <Select
-                    value={formData.component}
-                    onValueChange={(value) => {
-                      setFormData({
-                        ...formData,
-                        component: value,
-                        feature: '', // 重置功能
-                      });
-                    }}
-                    disabled={!formData.platform}
-                  >
-                    <SelectTrigger id="component">
-                      <SelectValue placeholder={t('componentPlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {components.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* 功能 */}
-                <div className="space-y-2">
-                  <Label htmlFor="feature" className="text-xs">{t('feature')}</Label>
-                  <Select
-                    value={formData.feature}
-                    onValueChange={(value) => {
-                      setFormData({
-                        ...formData,
-                        feature: value,
-                      });
-                    }}
-                    disabled={!formData.component}
-                  >
-                    <SelectTrigger id="feature">
-                      <SelectValue placeholder={t('featurePlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {features.map((f) => (
-                        <SelectItem key={f} value={f}>
-                          {f}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t('classificationHint')}
-              </div>
-            </div>
+            {/* 四层分类选择器（包含子功能第4层） */}
+            <FourLayerSelector
+              value={{
+                platform: formData.platform,
+                component: formData.component,
+                feature: formData.feature,
+                subFeature: formData.subFeature,
+              }}
+              onChange={(classification) => {
+                setFormData({
+                  ...formData,
+                  platform: classification.platform || '',
+                  component: classification.component || '',
+                  feature: classification.feature || '',
+                  subFeature: classification.subFeature || '',
+                });
+              }}
+              allowCreate={true}
+              refreshTrigger={open}
+              enableSubFeature={true}
+            />
 
             <div className="space-y-2">
               <Label>{t('tags')}</Label>
               
               {/* 已选择的标签 */}
               {selectedTagObjects.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2 p-2 border rounded-md bg-muted/30">
+                <div className="flex flex-wrap gap-2 mb-2 p-2 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md bg-muted/30">
                   {selectedTagObjects.map((tag) => (
                     <Badge
                       key={tag.id}
@@ -438,7 +376,7 @@ export function ApiEditDialog({
               />
 
               {/* 标签列表 */}
-              <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+              <div className="max-h-40 overflow-y-auto border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-2">
                 <div className="flex flex-wrap gap-2">
                   {/* 创建/选择标签按钮 */}
                   {canShowCreateButton && (
@@ -476,20 +414,6 @@ export function ApiEditDialog({
                 </div>
               </div>
             </div>
-
-            {/* API固定信息展示 */}
-            {api && (
-              <div className="space-y-2 p-3 bg-muted/30 rounded-md">
-                <div className="text-sm">
-                  <span className="text-muted-foreground">{t('method')}:</span>{' '}
-                  <Badge>{api.method}</Badge>
-                </div>
-                <div className="text-sm">
-                  <span className="text-muted-foreground">URL:</span>{' '}
-                  <span className="font-mono text-xs">{api.url}</span>
-                </div>
-              </div>
-            )}
           </div>
 
           <DialogFooter>

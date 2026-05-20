@@ -1,5 +1,5 @@
 {
-  "name": "AI TestMind",
+  "name": "API 智能测试平台",
   "version": "1.0.0",
   "private": true,
   "description": "AI-Powered Visual API Test Orchestration Platform - Think in Flows, Test with Intelligence",
@@ -20,24 +20,26 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/AI TestMind.git"
+    "url": "https://github.com/yourusername/API 智能测试平台.git"
   },
-  "homepage": "https://AI TestMind.io",
-  "author": "AI TestMind Team",
+  "homepage": "https://API 智能测试平台.io",
+  "author": "API 智能测试平台 Team",
   "license": "MIT",
   "scripts": {
-    "dev": "next dev",
-    "dev:turbo": "next dev --turbopack",
+    "dev": "next dev -p 3009",
+    "dev:turbo": "next dev --turbopack -p 3009",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3009",
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "clear-data": "node scripts/clear-data.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
-    "@prisma/client": "6.19.0",
+    "@next/swc-win32-x64-msvc": "^16.1.1",
+    "@prisma/client": "^6.19.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.2",
     "@radix-ui/react-checkbox": "^1.3.3",
@@ -60,16 +62,18 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.469.0",
-    "next": "16.0.1",
+    "next": "^16.1.6",
     "next-intl": "^4.5.3",
     "next-themes": "^0.4.4",
     "openai": "^6.8.1",
-    "playwright": "^1.57.0",
-    "prisma": "6.19.0",
+    "playwright": "^1.50.1",
+    "pptxgenjs": "^4.0.1",
+    "prisma": "^6.19.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-hook-form": "^7.54.2",
     "recharts": "^2.15.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^2.5.5",
     "zod": "^3.24.1"
   },
