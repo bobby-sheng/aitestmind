@@ -92,7 +92,7 @@ export default function LoginPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                AI TestMind
+                API 智能测试平台
               </h1>
               <p className="text-sm text-muted-foreground">AI-Powered API Test Platform</p>
             </div>
@@ -108,7 +108,7 @@ export default function LoginPage() {
           </h2>
 
           <p className="text-lg text-gray-300 mb-12">
-            AI TestMind 是新一代 AI 驱动的可视化 API 测试编排平台，
+            API 智能测试平台 是新一代 AI 驱动的可视化 API 测试编排平台，
             让测试用例的创建、管理和执行变得前所未有的简单。
           </p>
 
@@ -123,7 +123,7 @@ export default function LoginPage() {
               <div>
                 <h3 className="text-base font-semibold text-white mb-1">智能 API 录制</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
-                  浏览器插件 + HAR 导入双模式，自动捕获所有 API 请求，零配置快速构建测试用例
+                  浏览器插件 + HAR 导入双模式，自动捕获所有 API 请求，零配置快速构建 API 仓库
                 </p>
               </div>
             </div>
@@ -211,7 +211,7 @@ export default function LoginPage() {
             欢迎回来
           </CardTitle>
           <CardDescription className="text-center text-base">
-            登录到 AI TestMind 开始您的测试之旅
+            登录到 API 智能测试平台 开始您的测试之旅
           </CardDescription>
         </CardHeader>
         <CardContent>

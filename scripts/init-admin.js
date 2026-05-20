@@ -32,10 +32,10 @@ async function initAdmin() {
     // 创建默认管理员账号
     const adminUser = await prisma.user.create({
       data: {
-        username: 'admin',
+        loginName: 'admin',
+        username: '管理员',
         password: hashPassword('admin123'), // 默认密码
         email: 'admin@example.com',
-        realName: '系统管理员',
         role: 'admin',
         status: 'active',
       },
@@ -44,7 +44,7 @@ async function initAdmin() {
     console.log('✅ 管理员账号创建成功！');
     console.log('');
     console.log('📋 账号信息：');
-    console.log('   用户名: admin');
+    console.log('   登录名: admin');
     console.log('   密码: admin123');
     console.log('   邮箱:', adminUser.email);
     console.log('');

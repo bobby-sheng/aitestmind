@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { safeJsonParse, safeJsonStringify } from '@/lib/json-utils';
 import { logger, OperationType } from '@/lib/logger';
+
+const ALLOWED_PRIORITIES = new Set(['P0', 'P1', 'P2', 'P3'] as const);
+function normalizePriority(input: any): 'P0' | 'P1' | 'P2' | 'P3' {
+  if (input == null || input === '') {
+    return 'P2';
+  }
+  if (typeof input !== 'string' || !ALLOWED_PRIORITIES.has(input as any)) {
+    throw new Error(`Invalid priority: ${String(input)}`);
+  }
+  return input as any;
+}
 
 // 清理节点中的执行结果（后端保护层）
 function cleanExecutionFromFlowConfig(flowConfig: any): any {
@@ -55,6 +67,8 @@ export async function GET(
             order: 'asc',
           },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
     });
 
@@ -117,8 +131,11 @@ export async function PUT(
   const { id } = await params;
   
   try {
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const body = await request.json();
-    const { name, description, status, category, tags, flowConfig, steps } = body;
+    const { name, description, status, category, tags, priority, flowConfig, steps } = body;
 
     logger.apiRequest('PUT', `/api/test-cases/${id}`, OperationType.UPDATE, {
       name,
@@ -126,8 +143,29 @@ export async function PUT(
       stepsCount: steps?.length
     });
 
+    // 先读取当前用例，避免前端未传 priority 时被默认覆盖成 P2
+    logger.db(OperationType.READ, 'TestCase', 'findUnique', { id });
+    const existingTestCase = await prisma.testCase.findUnique({
+      where: { id },
+      select: { priority: true },
+    });
+
+    if (!existingTestCase) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Test case not found',
+        },
+        { status: 404 }
+      );
+    }
+
     // 清理 flowConfig 中的执行结果（后端保护层）
     const cleanedFlowConfig = cleanExecutionFromFlowConfig(flowConfig);
+    const normalizedPriority =
+      priority == null || priority === ''
+        ? existingTestCase.priority
+        : normalizePriority(priority);
 
     // 使用事务确保删除和更新操作的原子性
     logger.db(OperationType.UPDATE, 'TestCase', 'transaction', { id, name, stepsCount: steps?.length });
@@ -145,9 +183,11 @@ export async function PUT(
           name,
           description,
           status,
+          priority: normalizedPriority,
           category: category || null,
           tags: safeJsonStringify(tags),
           flowConfig: safeJsonStringify(cleanedFlowConfig),
+          ...(userId && { updatedBy: userId }),
           steps: {
             create: steps?.map((step: any, index: number) => ({
               name: step.name,

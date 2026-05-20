@@ -31,6 +31,7 @@ class MitmproxyManager {
   private sseClients: Set<SSEClient> = new Set();
   private fileWatcher: any = null;
   private lastRequestCount: number = 0;
+  private pollingInterval: NodeJS.Timeout | null = null; // 备用轮询定时器
 
   constructor() {
     // 临时文件路径（用于跨进程通信）
@@ -80,27 +81,58 @@ class MitmproxyManager {
       return; // 已经在监听
     }
     
+    const isWindows = os.platform() === 'win32';
+    
+    // 确保临时文件所在目录存在
+    const tempDir = path.dirname(this.tempFilePath);
+    if (!fsSync.existsSync(tempDir)) {
+      fsSync.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // 如果临时文件不存在，创建一个空的初始文件
+    if (!fsSync.existsSync(this.tempFilePath)) {
+      try {
+        fsSync.writeFileSync(this.tempFilePath, JSON.stringify({
+          session: null,
+          har_data: { log: { version: '1.2', entries: [] } },
+          total_requests: 0
+        }), 'utf-8');
+        console.log(`[mitmproxy] 📄 创建初始临时文件: ${this.tempFilePath}`);
+      } catch (error) {
+        console.error('[mitmproxy] 创建临时文件失败:', error);
+      }
+    }
+    
     this.fileWatcher = chokidar.watch(this.tempFilePath, {
       persistent: true,
-      ignoreInitial: true,
+      ignoreInitial: false, // 不忽略初始状态，这样 add 事件会被触发
+      // Windows 需要使用轮询模式才能可靠检测文件变化
+      usePolling: isWindows,
+      interval: isWindows ? 500 : 100, // Windows 上的轮询间隔
+      binaryInterval: isWindows ? 500 : 300,
       awaitWriteFinish: {
-        stabilityThreshold: 100,
-        pollInterval: 50,
+        stabilityThreshold: isWindows ? 300 : 100,
+        pollInterval: isWindows ? 100 : 50,
       },
     });
 
-    this.fileWatcher.on('change', async () => {
+    // 处理文件变化的通用函数
+    const handleFileChange = async (eventType: string) => {
       try {
+        console.log(`[mitmproxy] 📄 文件事件: ${eventType}`);
         const { summaries, totalRequests } = await this.readCaptureData();
+        
+        console.log(`[mitmproxy] 📊 读取到 ${totalRequests} 个请求 (上次: ${this.lastRequestCount})`);
         
         // 检查是否有新请求
         if (totalRequests > this.lastRequestCount) {
           const newRequests = summaries.slice(this.lastRequestCount);
           
-          console.log(`[mitmproxy] 🔔 检测到 ${newRequests.length} 个新请求`);
+          console.log(`[mitmproxy] 🔔 检测到 ${newRequests.length} 个新请求, SSE客户端数: ${this.sseClients.size}`);
           
           // 推送每个新请求
           newRequests.forEach(request => {
+            console.log(`[mitmproxy] 📤 广播新请求: ${request.method} ${request.url}`);
             this.broadcastToClients({
               type: 'new-request',
               data: request,
@@ -121,9 +153,30 @@ class MitmproxyManager {
       } catch (error) {
         console.error('[mitmproxy] 文件监听处理错误:', error);
       }
+    };
+
+    // 监听文件变化
+    this.fileWatcher.on('change', () => handleFileChange('change'));
+    
+    // 监听文件创建（Windows 上首次写入可能触发 add 而不是 change）
+    this.fileWatcher.on('add', () => handleFileChange('add'));
+    
+    // 监听错误
+    this.fileWatcher.on('error', (error: Error) => {
+      console.error('[mitmproxy] 文件监听错误:', error);
+    });
+    
+    // 监听 ready 事件
+    this.fileWatcher.on('ready', () => {
+      console.log(`[mitmproxy] ✅ 文件监听器就绪`);
     });
 
-    console.log('[mitmproxy] 📁 文件监听已启动');
+    console.log(`[mitmproxy] 📁 文件监听已启动 (平台: ${os.platform()}, 轮询: ${isWindows}, 路径: ${this.tempFilePath})`);
+    
+    // 🔥 备用轮询机制（Windows 上 chokidar 可能不可靠）
+    if (isWindows) {
+      this.startBackupPolling();
+    }
   }
 
   /**
@@ -135,6 +188,151 @@ class MitmproxyManager {
       this.fileWatcher = null;
       console.log('[mitmproxy] 📁 文件监听已停止');
     }
+    
+    // 停止备用轮询
+    this.stopBackupPolling();
+  }
+  
+  /**
+   * 启动备用轮询机制（Windows 专用）
+   */
+  private startBackupPolling(): void {
+    if (this.pollingInterval) {
+      return; // 已经在轮询
+    }
+    
+    console.log('[mitmproxy] ⏱️ 启动备用轮询机制 (1秒间隔)');
+    
+    this.pollingInterval = setInterval(async () => {
+      try {
+        // 检查文件是否存在
+        if (!fsSync.existsSync(this.tempFilePath)) {
+          return;
+        }
+        
+        const { summaries, totalRequests } = await this.readCaptureData();
+        
+        // 检查是否有新请求
+        if (totalRequests > this.lastRequestCount) {
+          const newRequests = summaries.slice(this.lastRequestCount);
+          
+          console.log(`[mitmproxy] 🔔 [轮询] 检测到 ${newRequests.length} 个新请求, SSE客户端数: ${this.sseClients.size}`);
+          
+          // 推送每个新请求
+          newRequests.forEach(request => {
+            console.log(`[mitmproxy] 📤 广播新请求: ${request.method} ${request.url}`);
+            this.broadcastToClients({
+              type: 'new-request',
+              data: request,
+            });
+          });
+          
+          // 推送会话更新
+          if (this.session) {
+            this.session.capturedRequests = totalRequests;
+            this.broadcastToClients({
+              type: 'session-update',
+              session: this.session,
+            });
+          }
+          
+          this.lastRequestCount = totalRequests;
+        }
+      } catch (error) {
+        // 轮询时的错误静默处理
+      }
+    }, 1000); // 每秒轮询一次
+  }
+  
+  /**
+   * 停止备用轮询
+   */
+  private stopBackupPolling(): void {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+      console.log('[mitmproxy] ⏱️ 备用轮询已停止');
+    }
+  }
+
+  /**
+   * 检查端口占用的进程 (跨平台)
+   */
+  private async getProcessesOnPort(port: number): Promise<string[]> {
+    const isWindows = os.platform() === 'win32';
+    
+    return new Promise((resolve) => {
+      let pids: string[] = [];
+      
+      if (isWindows) {
+        // Windows: 使用 netstat 查找端口占用
+        const checkProcess = spawn('cmd', ['/c', `netstat -ano | findstr :${port}`], {
+          stdio: ['ignore', 'pipe', 'ignore'],
+          shell: true,
+        });
+        
+        checkProcess.stdout?.on('data', (data) => {
+          const output = data.toString().trim();
+          if (output) {
+            // 解析 netstat 输出，提取 PID (最后一列)
+            const lines = output.split('\n');
+            for (const line of lines) {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length >= 5) {
+                const pid = parts[parts.length - 1];
+                if (pid && /^\d+$/.test(pid) && !pids.includes(pid)) {
+                  pids.push(pid);
+                }
+              }
+            }
+          }
+        });
+        
+        checkProcess.on('close', () => resolve(pids));
+        checkProcess.on('error', () => resolve([]));
+      } else {
+        // Unix/Mac: 使用 lsof
+        const checkProcess = spawn('lsof', ['-i', `:${port}`, '-t'], {
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        
+        checkProcess.stdout?.on('data', (data) => {
+          const output = data.toString().trim();
+          if (output) {
+            pids = output.split('\n').filter((pid: string) => pid);
+          }
+        });
+        
+        checkProcess.on('close', () => resolve(pids));
+        checkProcess.on('error', () => resolve([]));
+      }
+    });
+  }
+
+  /**
+   * 杀死进程 (跨平台)
+   */
+  private async killProcess(pid: string): Promise<void> {
+    const isWindows = os.platform() === 'win32';
+    
+    return new Promise((resolve) => {
+      if (isWindows) {
+        // Windows: 使用 taskkill
+        const killProcess = spawn('taskkill', ['/F', '/PID', pid], {
+          stdio: 'ignore',
+        });
+        killProcess.on('close', () => resolve());
+        killProcess.on('error', () => resolve());
+      } else {
+        // Unix/Mac: 使用 process.kill
+        try {
+          process.kill(parseInt(pid), 'SIGTERM');
+        } catch (error) {
+          // 忽略错误
+        }
+        resolve();
+      }
+    });
   }
 
   /**
@@ -142,29 +340,14 @@ class MitmproxyManager {
    */
   private async checkAndKillOrphanProcess(port: number): Promise<void> {
     try {
-      // 使用 lsof 检查端口是否被占用
-      const checkProcess = spawn('lsof', ['-i', `:${port}`, '-t'], {
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-      
-      let pids: string[] = [];
-      checkProcess.stdout?.on('data', (data) => {
-        const output = data.toString().trim();
-        if (output) {
-          pids = output.split('\n').filter((pid: string) => pid);
-        }
-      });
-      
-      await new Promise((resolve) => {
-        checkProcess.on('close', resolve);
-      });
+      const pids = await this.getProcessesOnPort(port);
       
       if (pids.length > 0) {
         console.log(`[mitmproxy] ⚠️ 发现孤儿进程 (PIDs: ${pids.join(', ')}), 正在清理...`);
         
         for (const pid of pids) {
           try {
-            process.kill(parseInt(pid), 'SIGTERM');
+            await this.killProcess(pid);
             console.log(`[mitmproxy] 🗑️ 已发送停止信号给进程 ${pid}`);
           } catch (error) {
             console.warn(`[mitmproxy] 清理进程 ${pid} 失败:`, error);
@@ -175,7 +358,7 @@ class MitmproxyManager {
         await this.delay(1000);
       }
     } catch (error) {
-      // lsof 可能不可用，忽略错误
+      // 端口检查可能失败，忽略错误
       console.log('[mitmproxy] 跳过孤儿进程检查');
     }
   }
@@ -500,22 +683,8 @@ class MitmproxyManager {
    */
   private async detectOrphanProcess(): Promise<boolean> {
     try {
-      const checkProcess = spawn('lsof', ['-i', `:${this.port}`, '-t'], {
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-      
-      let hasProcess = false;
-      checkProcess.stdout?.on('data', (data) => {
-        if (data.toString().trim()) {
-          hasProcess = true;
-        }
-      });
-      
-      await new Promise((resolve) => {
-        checkProcess.on('close', resolve);
-      });
-      
-      return hasProcess;
+      const pids = await this.getProcessesOnPort(this.port);
+      return pids.length > 0;
     } catch (error) {
       return false;
     }

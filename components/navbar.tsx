@@ -1,10 +1,11 @@
 "use client"
 
 import { usePathname, useRouter } from "next/navigation"
-import { User, LogOut, Users } from "lucide-react"
+import { User, LogOut, Users, PanelLeft, PanelLeftClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeStyleSelector } from "@/components/theme-style-selector"
 import { LanguageToggle } from "@/components/language-toggle"
+import { BreadcrumbNav } from "@/components/breadcrumb-nav"
 import { useTranslations } from "next-intl"
 import {
   DropdownMenu,
@@ -16,13 +17,20 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 import { useState, useEffect } from "react"
+import { useTabs } from "@/contexts/tabs-context"
 
-export function Navbar() {
+interface NavbarProps {
+  onToggleSidebar?: () => void
+  isCollapsed?: boolean
+}
+
+export function Navbar({ onToggleSidebar, isCollapsed = false }: NavbarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const t = useTranslations('nav')
   const { toast } = useToast()
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const { resetTabs } = useTabs()
   
   // 获取当前用户信息
   useEffect(() => {
@@ -35,39 +43,6 @@ export function Navbar() {
       }
     }
   }, [])
-  
-  // 获取页面标题，支持动态路由
-  const getPageTitle = () => {
-    // 精确匹配
-    const PAGE_TITLES: Record<string, string> = {
-      '/': t('dashboard'),
-      '/api-repository': t('apiRepository'),
-      '/api-capture': t('apiCapture'),
-      '/ai-generate': t('aiGenerate'),
-      '/test-suites': t('testSuites'),
-      '/test-orchestration': t('testOrchestration'),
-      '/execution': t('execution'),
-      '/reports': t('reports'),
-      '/settings': t('settings'),
-      '/users': t('userManagement'),
-    }
-    
-    if (PAGE_TITLES[pathname]) {
-      return PAGE_TITLES[pathname]
-    }
-    
-    // 匹配动态路由
-    if (pathname.startsWith('/test-suites/')) {
-      if (pathname.includes('/edit')) return t('editTestSuite')
-      if (pathname.includes('/create')) return t('createTestSuite')
-      return t('testSuiteDetails')
-    }
-    if (pathname.startsWith('/execution/')) {
-      return t('executionDetails')
-    }
-    
-    return t('platformTitle')
-  }
 
   const handleLogout = async () => {
     try {
@@ -82,9 +57,13 @@ export function Navbar() {
         })
       }
       
-      // 清除本地存储
+      // 清除本地存储（含页签，避免重新登录后仍显示上次的页签）
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      localStorage.removeItem('app-tabs')
+      localStorage.removeItem('app-active-tab')
+      // 重置内存中的页签状态
+      resetTabs()
       
       toast({
         title: t('logoutSuccess'),
@@ -98,6 +77,9 @@ export function Navbar() {
       // 即使出错也清除本地数据
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      localStorage.removeItem('app-tabs')
+      localStorage.removeItem('app-active-tab')
+      resetTabs()
       router.push('/login')
     }
   }
@@ -107,25 +89,40 @@ export function Navbar() {
   }
 
   return (
-    <div className="border-b">
-      <div className="flex h-16 items-center px-6 gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{getPageTitle()}</h1>
+    <div className="border-b border-border">
+      <div className="flex h-14 items-center px-6 gap-4">
+        {onToggleSidebar && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            className="h-8 w-8 hidden md:flex flex-shrink-0"
+            title={isCollapsed ? "展开侧边栏" : "收缩侧边栏"}
+          >
+            {isCollapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </Button>
+        )}
+        <div className="flex-1 min-w-0">
+          <BreadcrumbNav />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <ThemeStyleSelector />
           <LanguageToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <User className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <User className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    {currentUser?.username || t('notLoggedIn')}
+                    {currentUser?.username || currentUser?.loginName || t('notLoggedIn')}
                   </p>
                   {currentUser?.email && (
                     <p className="text-xs leading-none text-muted-foreground">

@@ -36,7 +36,7 @@ export function MessageList({ messages, loading, onExampleClick }: MessageListPr
 
   if (messages.length === 0 && !loading) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8 bg-transparent">
+      <div className="flex-1 flex items-center justify-center px-8 py-6 bg-transparent">
         <div className="text-center max-w-2xl">
           <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
             <Sparkles className="w-10 h-10 text-white" />
@@ -98,14 +98,14 @@ export function MessageList({ messages, loading, onExampleClick }: MessageListPr
 
   return (
     <div className="flex-1 overflow-y-auto bg-transparent">
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-4xl mx-auto px-4 pt-4 pb-6 space-y-6">
         {messages.map((message) => {
           // 用户消息
           if (message.role === 'user') {
             return (
               <div key={message.id} className="flex gap-4 justify-end">
-                <div className="rounded-2xl px-5 py-3 max-w-[80%] bg-primary text-primary-foreground shadow-md">
-                  <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                <div className="rounded-2xl px-5 py-3.5 max-w-[80%] bg-primary text-primary-foreground shadow-md">
+                  <div className="whitespace-pre-wrap break-words text-base leading-relaxed">
                     {message.content}
                   </div>
                   <div className="text-xs mt-2 opacity-80">
@@ -116,7 +116,7 @@ export function MessageList({ messages, loading, onExampleClick }: MessageListPr
                   </div>
                 </div>
 
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
                   <User className="w-5 h-5 text-primary-foreground" />
                 </div>
               </div>
@@ -139,12 +139,12 @@ export function MessageList({ messages, loading, onExampleClick }: MessageListPr
             // 否则使用普通渲染
             return (
               <div key={message.id} className="flex gap-4 justify-start">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
                   <Sparkles className="w-5 h-5 text-primary-foreground" />
                 </div>
 
-                <div className="rounded-2xl px-5 py-3 max-w-[80%] bg-muted text-foreground shadow-sm">
-                  <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                <div className="rounded-2xl px-5 py-3.5 max-w-[80%] bg-muted text-foreground shadow-sm">
+                  <div className="whitespace-pre-wrap break-words text-base leading-relaxed">
                     {message.content}
                   </div>
                   <div className="text-xs mt-2 text-muted-foreground">
@@ -164,13 +164,13 @@ export function MessageList({ messages, loading, onExampleClick }: MessageListPr
         {/* 加载状态 */}
         {loading && (
           <div className="flex gap-4 justify-start">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
+            <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
               <Sparkles className="w-5 h-5 text-primary-foreground" />
             </div>
-            <div className="rounded-2xl px-5 py-3 bg-muted shadow-sm">
+            <div className="rounded-2xl px-5 py-3.5 bg-muted shadow-sm">
               <div className="flex items-center gap-2">
                 <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                <span className="text-sm text-muted-foreground">
+                <span className="text-base text-muted-foreground">
                   {t('aiThinking')}
                 </span>
               </div>

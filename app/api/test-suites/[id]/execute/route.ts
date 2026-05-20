@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { logger, OperationType } from '@/lib/logger';
 import { getExecutorUrl } from '@/lib/config';
 
@@ -12,6 +13,10 @@ export async function POST(
   const { id } = await params;
   
   try {
+    const currentUser = await getCurrentUser(request);
+    const triggerUserId = currentUser?.user?.id ?? null;
+    const triggerUser = currentUser?.user?.loginName ?? null;
+
     // 获取请求参数
     const body = await request.json().catch(() => ({}));
     const triggeredBy = body.triggered_by || 'manual';
@@ -124,14 +129,16 @@ export async function POST(
         totalCases: testSuite.testCases.length,
         totalSteps,
         triggeredBy,
+        ...(triggerUserId && { triggerUserId }),
+        ...(triggerUser && { triggerUser }),
       },
     });
     
     logger.success(OperationType.CREATE, `创建执行记录: ${execution.id}`);
 
-    // 异步调用Python执行器
+    // 异步调用Python执行器（fire-and-forget，执行器会立即返回）
     try {
-      const executorUrl = getExecutorUrl(false); // 服务端调用
+      const executorUrl = getExecutorUrl(false);
       const endpoint = `${executorUrl}/api/execute-suite`;
       
       logger.external('FastAPI', '调用执行器', true, {
@@ -139,6 +146,9 @@ export async function POST(
         executionId: execution.id,
         suiteId: testSuite.id,
       });
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
       const executorResponse = await fetch(endpoint, {
         method: 'POST',
@@ -149,21 +159,23 @@ export async function POST(
           suite_execution_id: execution.id,
           suite_id: testSuite.id,
           environment_config: environmentConfig,
+          run_mode: testSuite.runMode || 'serial',
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!executorResponse.ok) {
         throw new Error('Failed to start execution');
       }
 
-      logger.success(OperationType.EXECUTE, `执行器启动成功: ${execution.id}`);
+      logger.success(OperationType.EXECUTE, `执行器接受任务: ${execution.id}`);
 
-      // 更新状态为running（仅当状态仍为pending时）
-      // 避免覆盖执行器已经设置的completed/failed状态
       await prisma.testSuiteExecution.updateMany({
         where: { 
           id: execution.id,
-          status: 'pending'  // 只有当状态还是pending时才更新
+          status: 'pending',
         },
         data: { status: 'running' },
       });
@@ -172,7 +184,6 @@ export async function POST(
         executionId: execution.id,
       });
       
-      // 更新状态为failed
       await prisma.testSuiteExecution.update({
         where: { id: execution.id },
         data: {

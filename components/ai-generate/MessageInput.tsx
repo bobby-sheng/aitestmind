@@ -53,18 +53,18 @@ export function MessageInput({
   };
 
   return (
-    <div className="border-t border-border bg-card p-3">
-      <div className="max-w-4xl mx-auto space-y-2">
+    <div className="border-t border-border bg-card p-4">
+      <div className="max-w-4xl mx-auto space-y-3">
         {/* 测试类型选择器 - 单行紧凑布局 */}
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-medium text-muted-foreground shrink-0">{t('generateType')}:</span>
+          <span className="text-sm font-medium text-muted-foreground shrink-0">{t('generateType')}:</span>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setTestType('api')}
               disabled={loading}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all
+                flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
                 ${testType === 'api' 
                   ? 'bg-primary text-primary-foreground shadow-sm' 
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -72,7 +72,7 @@ export function MessageInput({
                 ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
             >
-              <Code2 className="w-3.5 h-3.5" />
+              <Code2 className="w-4 h-4" />
               <span>{t('generateApiTest')}</span>
             </button>
             <button
@@ -80,7 +80,7 @@ export function MessageInput({
               onClick={() => setTestType('e2e')}
               disabled={loading}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all
+                flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
                 ${testType === 'e2e' 
                   ? 'bg-primary text-primary-foreground shadow-sm' 
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -88,7 +88,7 @@ export function MessageInput({
                 ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
             >
-              <Workflow className="w-3.5 h-3.5" />
+              <Workflow className="w-4 h-4" />
               <span>{t('generateE2eTest')}</span>
             </button>
           </div>
@@ -101,13 +101,13 @@ export function MessageInput({
             onKeyDown={handleKeyDown}
             placeholder={getPlaceholder()}
             disabled={loading}
-            className="min-h-[80px] pr-12 resize-none text-sm"
+            className="min-h-[120px] pr-14 resize-none text-sm leading-relaxed"
           />
           {loading ? (
             <Button
               onClick={handleStop}
               variant="destructive"
-              className="absolute right-2 bottom-2 gap-2 px-4 h-10 rounded-full shadow-lg animate-pulse"
+              className="absolute right-3 bottom-3 gap-2 px-4 h-10 rounded-full shadow-lg animate-pulse"
               title={t('stopGenerating')}
             >
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -118,20 +118,20 @@ export function MessageInput({
               onClick={handleSend}
               disabled={!input.trim()}
               size="icon"
-              className="absolute right-2 bottom-2 rounded-full"
+              className="absolute right-3 bottom-3 rounded-full h-10 w-10"
               title={t('send')}
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5" />
             </Button>
           )}
         </div>
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="hidden sm:inline">
-            <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Enter</kbd> {t('send')}
-            <kbd className="ml-2 px-1 py-0.5 bg-muted rounded text-[10px]">Shift+Enter</kbd> {t('sendWithShiftEnter')}
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-[11px] font-medium">Enter</kbd> {t('send')}
+            <kbd className="ml-2 px-1.5 py-0.5 bg-muted rounded text-[11px] font-medium">Shift+Enter</kbd> {t('sendWithShiftEnter')}
           </span>
           <span className="sm:hidden">Enter {t('send')}</span>
-          <span>{input.length}</span>
+          <span className="font-medium">{input.length}</span>
         </div>
       </div>
     </div>

@@ -1,0 +1,386 @@
+# API 智能测试平台 - 功能模块详细业务描述
+
+> 本文档对项目各功能模块进行全面的功能描述及详细业务逻辑说明。
+
+---
+
+## 1. 仪表盘 (Dashboard)
+
+### 1.1 功能描述
+
+仪表盘是用户登录后的首页，提供 API 智能测试平台的整体运行概览，包括统计卡片、执行趋势图表、成功率分布以及最近执行记录。
+
+### 1.2 主要功能
+
+- **欢迎横幅**：根据当前时间显示问候语（早上好/下午好/晚上好），展示当前日期与系统状态
+- **统计卡片**：4 个核心指标
+  - API 总数及本周新增
+  - 测试用例总数及本周新增
+  - 成功率及与上周对比
+  - 最近一次执行中失败用例数
+- **执行趋势图**：最近 30 天按日汇总的 passed/failed/total 面积图
+- **成功率分布**：环形图展示通过率与失败率
+- **最近执行**：最近 10 条套件执行记录，可点击跳转详情
+
+### 1.3 业务逻辑
+
+**数据来源**：`GET /api/dashboard/stats`
+
+**统计计算逻辑**：
+1. **API 总数**：`prisma.api.count()`
+2. **本周新增 API**：`createdAt >= weekAgo` 的数量
+3. **测试用例总数**：排除 `status === "archived"` 的用例数
+4. **本周新增用例**：同上 + `createdAt >= weekAgo`
+5. **成功率**：最近 30 次已完成执行的 `passedCases / (passedCases + failedCases)` 汇总
+6. **成功率变化**：当前周 vs 上周的成功率差值
+7. **失败用例数**：最近一次执行的 `failedCases`
+8. **趋势数据**：最近 30 天按日分组，汇总每日 total/passed/failed
+
+**页面交互**：
+- 点击最近执行卡片 → 跳转 `/execution/suite/{executionId}`
+- 每分钟刷新当前时间以更新问候语
+- 支持中英文国际化（locale 从 next-intl 获取）
+
+---
+
+## 2. API 采集 (API Capture)
+
+### 2.1 功能描述
+
+支持通过浏览器录制、HTTP 代理、mitmproxy 三种方式采集 API 请求，也可导入 HAR 文件。采集的 API 可查看详情、批量保存到 API 仓库。
+
+### 2.2 主要功能
+
+- **三种采集模式**：
+  - **Browser**：Playwright 打开浏览器，记录页面产生的 XHR/Fetch 请求
+  - **Proxy**：启动本地代理服务器（默认 8899），配置系统代理后采集流量
+  - **mitmproxy**：启动 mitmproxy 代理（需单独安装 mitmproxy 服务）
+- **HAR 导入**：支持上传 `.har` 文件，解析后加入采集列表
+- **API 列表**：展示已采集的 API，支持筛选、删除、清空、查看详情、批量保存
+- **导出**：将采集数据导出为 HAR 文件
+
+### 2.3 业务逻辑
+
+**API 端点**：
+- 录制：`/api/recording/start|stop|pause|resume|status|data|clear|stream`
+- 代理：`/api/proxy/*` 同结构
+- MITM：`/api/mitm/*` 同结构
+
+**采集流程**：
+1. 选择模式 → 调用对应 `start` → 返回 session 信息
+2. 实时接收：SSE `useRecordingSSE` 监听 `/api/recording/stream`，新请求实时追加到列表（去重）
+3. 暂停/继续：调用 `pause` / `resume`，仅影响后续请求捕获
+4. 停止：调用 `stop`，返回最终 `summaries`，并清除 localStorage 中的录制状态
+
+**状态恢复**：
+- 页面加载时从 `localStorage` 读取 `RECORDING_SESSION_KEY`
+- 根据 session.url 判断模式，调用对应 `status` 接口
+- 若后端仍存在活跃会话，则恢复 `isRecording` 和 `capturedApis`
+
+**批量保存**：
+- 打开 `BatchSaveDialog`，选择 API 并填写 name/description/四层分类等
+- 调用 `POST /api/api-library/save` 保存到仓库
+- 保存成功后可从采集列表中移除已保存项
+
+---
+
+## 3. API 仓库 (API Repository)
+
+### 3.1 功能描述
+
+以四层分类结构（平台 → 组件 → 功能 → 子功能）管理已入库的 API，支持 CRUD、搜索、筛选、去重检测、冲突解决。
+
+### 3.2 主要功能
+
+- **四层分类树**：左侧树形结构展示 platform → component → feature → subFeature
+- **API 列表**：右侧表格，支持分页、按 HTTP 方法、收藏、归档、搜索
+- **API 详情**：查看完整请求/响应信息
+- **API 编辑 / 新建**：编辑或新建 API，支持四层分类、标签、schema 等
+- **分类管理**：创建/编辑 Classification（platform/component/feature 唯一组合）
+- **删除确认**：删除前检查是否有用例引用，展示引用列表
+- **冲突解决**：保存时若与已有 API 冲突（如 path 重复），弹出冲突解决对话框
+
+### 3.3 业务逻辑
+
+**列表查询**：`GET /api/api-library/list`
+
+- 查询参数：`page`, `pageSize`, `method`, `platform`, `component`, `feature`, `subFeature`, `search`, `isStarred`, `includeArchived`
+- 特殊值 `__NULL__` 表示筛选该层为 null 的 API
+- 返回轻量字段（不含 requestBody、responseBody 等大字段）以提升性能
+
+**保存逻辑**：`POST /api/api-library/save`
+
+- 从 `PlatformSettings` 读取 `allowedHeaders` 白名单，过滤请求头
+- 路径参数化：对 path 中的动态段（如 ID）统一参数化，便于后续用例引用
+- 支持 `_overwrite` 覆盖已存在记录
+- 去重检测：`POST /api/api-library/check-duplicates` 检查 path+method 是否重复
+
+**四层分类**：
+- `Classification` 表：platform + component + feature 唯一
+- API 的 `platform/component/feature/subFeature` 可独立于 Classification 存在
+- 树节点可新建子分类、编辑、展开/折叠
+
+---
+
+## 4. 用例编排 (Test Orchestration)
+
+### 4.1 功能描述
+
+基于流程图画布（@xyflow/react）编排测试用例，支持 API 节点、等待节点、断言节点、并行节点，支持变量提取与引用、撤销/重做。
+
+### 4.2 主要功能
+
+- **视图切换**：列表视图 / 编辑视图
+- **用例列表**：分页展示用例，支持搜索、按优先级/分类/标签筛选
+- **流程图画布**：拖拽节点、连线、配置每个节点
+- **节点类型**：
+  - `start` / `end`：起止节点
+  - `api`：调用 API，可配置请求参数、变量提取、断言
+  - `wait`：等待（固定时间或条件）
+  - `assertion`：断言
+  - `parallel`：并行执行子节点
+- **API 选择**：从 API 仓库选择 API 作为节点
+- **变量选择器**：引用上一步的 `response.xxx` 到当前参数
+- **执行日志**：编辑视图内执行用例并查看步骤级日志
+- **撤销 / 重做**：`useUndoRedo` 支持操作历史
+
+### 4.3 业务逻辑
+
+**flowConfig 结构**：
+```json
+{
+  "nodes": [...],
+  "edges": [...],
+  "variables": { "key": "value" }
+}
+```
+
+**保存逻辑**：
+- 校验：必须有 start → ... → end 的连通路径，且无环
+- 清理节点中的 `execution` 字段后再保存
+- `POST /api/test-cases` 新建，`PUT /api/test-cases/[id]` 更新
+- 同步创建/更新 `TestStep` 记录（api 节点对应 step）
+
+**执行逻辑**：
+- 前端调用 Python 执行器：`getExecutorUrl()` 默认 `http://192.168.10.113:18015`
+- 发送 `flowConfig` 到执行器，执行器按拓扑顺序执行节点
+- 支持变量提取：从响应中 `response.data.id` 等路径取值，注入到后续步骤
+- 支持后置清理节点：`isCleanup: true` 的节点在用例主体完成后执行
+
+**优先级**：`P0`(核心) / `P1`(高) / `P2`(中) / `P3`(低)，默认 `P2`
+
+---
+
+## 5. AI 生成 (AI Generate)
+
+### 5.1 功能描述
+
+基于大模型（OpenAI/Claude 等）的对话式测试用例生成，支持层级化 API 检索、编排指令组装、一键创建测试用例。
+
+### 5.2 主要功能
+
+- **对话列表**：左侧展示所有对话，支持新建、选择、删除
+- **消息列表**：展示用户与 AI 消息，支持流式输出
+- **输入框**：支持测试类型（api/e2e 等）、示例快捷发送
+- **流式渲染**：thinking / tool_call / content / summary / error 等块类型
+- **停止生成**：AbortController 中断 SSE 请求
+
+### 5.3 业务逻辑
+
+**API**：`POST /api/ai/smart-generate`
+
+- 请求体：`{ userInput, testType }`
+- 响应：SSE 流，事件类型包括：
+  - `thinking`：模型思考过程
+  - `tool_call`：工具调用（start/success/error）
+  - `content`：文本内容
+  - `summary`：生成结果摘要
+  - `error`：错误信息
+
+**AI 工具（Function Calling）**：
+1. **hierarchical_search_apis**：四层分类层级检索 API
+   - 参数：platform, component, feature, apiName, method, userQuery, limit
+   - 返回匹配度排序的 API 列表
+2. **get_api_detail**：获取单个 API 详情
+3. **smart_search_delete_api**：根据创建 API 智能搜索对应的删除 API（用于后置清理）
+4. **assemble_and_create_test_cases**：根据编排指令自动组装并创建用例
+   - 输入：`orchestrationPlan`（testCases + nodes + edges）
+   - 流程：收集 apiId → 批量查询 API 详情 → 组装引擎生成完整 flowConfig → 保存 TestCase/TestStep
+
+**编排指令结构**：
+- 每个 testCase 包含 `nodes`（id、type、apiId、params、variableRefs、assertions、isCleanup）和 `edges`
+- AI 只需输出轻量编排，后端自动填充 requestConfig、ParamValue 等
+
+**对话持久化**：
+- `Conversation` / `ConversationMessage` 表
+- 用户消息和 AI 回复保存到数据库，metadata 中存储 blocks 用于前端渲染
+
+---
+
+## 6. 测试套件 (Test Suites)
+
+### 6.1 功能描述
+
+将多个测试用例组织成套件，支持独立环境配置、用例顺序、调度执行（手动/定时）。
+
+### 6.2 主要功能
+
+- **套件列表**：分页展示，显示名称、状态、用例数、最近执行等
+- **创建 / 编辑套件**：名称、描述、环境配置、选用例、调度配置
+- **执行**：一键执行套件，触发后端执行流程
+- **历史记录**：查看套件执行历史
+
+### 6.3 业务逻辑
+
+**数据模型**：
+- `TestSuite`：name, status, useGlobalSettings, environmentConfig, executionMode, scheduleConfig
+- `TestSuiteCase`：suiteId, testCaseId, order, enabled
+
+**环境配置**：
+- `useGlobalSettings === true`：使用平台全局设置（PlatformSettings）
+- `useGlobalSettings === false`：使用 `environmentConfig`（结构与 PlatformSettings 一致）
+
+**执行**：`POST /api/test-suites/[id]/execute`
+
+- 创建 `TestSuiteExecution` 记录
+- 调用 Python 执行器（suite_executor）按 order 顺序执行用例
+- 执行过程中写入 `TestCaseExecution`、`TestStepExecution`、`ExecutionLog`
+
+**调度**：
+- `executionMode`: `manual` | `scheduled`
+- `scheduleConfig`：JSON 存储 cron 等配置
+- `scheduleStatus`: `active` | `paused` | `disabled`
+- 调度由 `executor/scheduler.py` 负责（需单独运行）
+
+---
+
+## 7. 执行监控 (Execution Monitoring)
+
+### 7.1 功能描述
+
+查看测试套件执行记录，支持状态轮询、停止、重试、清空、跳转详情与日志。
+
+### 7.2 主要功能
+
+- **执行列表**：分页展示，包含套件名、状态、通过/失败数、进度条
+- **状态**：pending / running / completed / failed / stopped
+- **操作**：查看详情、查看日志、停止（进行中）、重试（已完成/失败/已停止）、清空全部
+- **轮询**：若有 running 或 pending 记录，每 2 秒刷新列表
+
+### 7.3 业务逻辑
+
+**API**：
+- `GET /api/executions/suite`：分页列表
+- `GET /api/executions/suite/[executionId]`：单条详情
+- `POST /api/executions/suite/[executionId]/stop`：停止执行
+- `POST /api/executions/suite/[executionId]/retry`：基于该执行重新触发一次
+- `POST /api/executions/suite/clear`：清空所有执行记录
+
+**执行层级**：
+- `TestSuiteExecution` → `TestCaseExecution` → `TestStepExecution`
+- `ExecutionLog` 可关联到 step/case/suite 任意层级
+
+**详情页**：`/execution/suite/[executionId]`
+
+- 展示套件级统计、用例列表、步骤级执行结果
+- 可查看请求/响应、断言结果、变量提取等
+
+---
+
+## 8. 设置 (Settings)
+
+### 8.1 功能描述
+
+配置平台全局环境、认证方式、AI 服务、请求头过滤等。
+
+### 8.2 主要功能
+
+- **基础环境**：baseUrl
+- **Token 认证**：authTokenEnabled, authTokenKey, authTokenValue
+- **Token 自动获取**：tokenLoginApiUrl, tokenLoginMethod, tokenLoginRequestHeaders/Body, tokenResponsePath
+- **Session 认证**：loginApiUrl, loginMethod, loginRequestHeaders/Body, sessionCookies
+- **AI 配置**：aiEnabled, aiProvider, aiModel, aiApiKey, aiBaseUrl, aiTemperature, aiMaxTokens
+- **请求头白名单**：allowedHeaders（采集入库时只保留这些 header）
+- **测试**：测试登录接口、测试 Token 获取、测试 AI 连接
+
+### 8.3 业务逻辑
+
+**API**：`GET/PUT /api/settings`
+
+- 读取/更新 `PlatformSettings` 表（单例，取最新一条）
+- 保存时验证 JSON 格式（headers、body）
+
+**Token 自动获取**：
+- 调用 `POST /api/platform-settings/test-token-login` 测试
+- 执行时由执行器或前置逻辑定期刷新 token
+
+**Session 模式**：
+- 调用登录接口，从响应 Set-Cookie 提取 cookies，保存到 `sessionCookies`
+- 执行时在请求头中附带 Cookie
+
+---
+
+## 9. 用户管理 (User Management)
+
+### 9.1 功能描述
+
+管理员对用户进行 CRUD、角色与状态管理。
+
+### 9.2 主要功能
+
+- **用户列表**：搜索、按角色/状态筛选
+- **创建用户**：loginName, username, password, email, role, status
+- **编辑用户**：修改除 loginName 外的信息
+- **删除用户**：确认后删除
+- **角色**：admin / user
+- **状态**：active / inactive
+
+### 9.3 业务逻辑
+
+**API**：
+- `GET /api/users`：列表，需管理员权限
+- `POST /api/users`：创建
+- `PUT /api/users/[id]`：更新
+- `DELETE /api/users/[id]`：删除
+
+**认证**：请求头 `Authorization: Bearer {token}`，token 来自登录后 localStorage
+
+**权限**：用户管理页面通常仅 admin 可访问，由 `AuthGuard` 或路由中间件控制
+
+---
+
+## 10. 数据流与依赖关系
+
+```
+用户登录 (Session/Token)
+    ↓
+仪表盘 ← 统计 API/TestCase/Execution
+    ↓
+API采集 → API仓库 (保存)
+    ↓
+API仓库 ← 用例编排 (选择API) / AI生成 (检索API)
+    ↓
+用例编排 → 测试套件 (选用例)
+    ↓
+测试套件 → 执行 (调用 Python 执行器)
+    ↓
+执行监控 ← 执行结果 / 日志
+    ↓
+设置 → 平台配置 (baseUrl/认证/AI) → 影响采集过滤、执行环境、AI生成
+```
+
+---
+
+## 11. 技术栈概要
+
+| 类别 | 技术 |
+|------|------|
+| 前端 | Next.js 16, React 19, next-intl, Recharts, @xyflow/react |
+| 后端 | Next.js API Routes, Prisma |
+| 数据库 | SQLite |
+| 执行器 | Python (httpx, asyncio) |
+| 采集 | Playwright, 自研 Proxy, mitmproxy |
+
+---
+
+*文档生成时间：基于项目代码分析*

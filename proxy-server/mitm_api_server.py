@@ -282,6 +282,41 @@ def _convert_to_summaries(har_data):
             post_data = request.get('postData') or {}
             content = response.get('content') or {}
             
+            # 解析请求体和请求体类型
+            request_body = None
+            request_mime_type = None
+            
+            if isinstance(post_data, dict):
+                request_mime_type = post_data.get('mimeType')
+                mime_lower = (request_mime_type or '').lower()
+                
+                if 'application/json' in mime_lower:
+                    # JSON 格式：尝试解析 text 为 JSON 对象
+                    text = post_data.get('text')
+                    if text:
+                        try:
+                            import json
+                            request_body = json.loads(text)
+                        except:
+                            request_body = text
+                elif 'multipart/form-data' in mime_lower or 'application/x-www-form-urlencoded' in mime_lower:
+                    # form-data 或 urlencoded 格式：从 params 或 text 解析
+                    params = post_data.get('params')
+                    if params and len(params) > 0:
+                        request_body = {p['name']: p.get('value', '') for p in params}
+                    else:
+                        text = post_data.get('text')
+                        if text:
+                            try:
+                                from urllib.parse import parse_qs
+                                parsed_params = parse_qs(text, keep_blank_values=True)
+                                request_body = {k: v[0] if len(v) == 1 else v for k, v in parsed_params.items()}
+                            except:
+                                request_body = text
+                else:
+                    # 其他格式：保留原始 text
+                    request_body = post_data.get('text')
+            
             # 生成唯一 ID（使用时间戳 + URL hash）
             import hashlib
             unique_str = f"{entry.get('startedDateTime', '')}_{request.get('url', '')}_{idx}"
@@ -300,7 +335,8 @@ def _convert_to_summaries(har_data):
                 'startedDateTime': entry.get('startedDateTime', ''),
                 'headers': {h['name']: h['value'] for h in request.get('headers', [])},
                 'queryParams': {q['name']: q['value'] for q in request.get('queryString', [])},
-                'requestBody': post_data.get('text') if isinstance(post_data, dict) else None,
+                'requestBody': request_body,
+                'requestMimeType': request_mime_type,
                 'responseBody': content.get('text') if isinstance(content, dict) else None,
                 'mimeType': content.get('mimeType', 'application/octet-stream') if isinstance(content, dict) else 'application/octet-stream'
             }

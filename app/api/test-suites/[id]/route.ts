@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { logger, OperationType } from '@/lib/logger';
 import { getExecutorUrl } from '@/lib/config';
 
@@ -51,6 +52,8 @@ export async function GET(
           },
           take: 10, // 只返回最近10次执行
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
     });
 
@@ -119,10 +122,14 @@ export async function PUT(
       useGlobalSettings,
       environmentConfig,
       testCases,
+      runMode,
       executionMode,
       scheduleConfig,
       scheduleStatus,
     } = body;
+
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
 
     // 更新测试套件基本信息
     const updateData: any = {
@@ -133,7 +140,12 @@ export async function PUT(
       tags: tags ? JSON.stringify(tags) : null,
       useGlobalSettings,
       environmentConfig: environmentConfig || null,
+      ...(userId && { updatedBy: userId }),
     };
+
+    if (runMode !== undefined) {
+      updateData.runMode = runMode;
+    }
 
     // 如果有调度相关字段，也更新它们
     if (executionMode !== undefined) {
@@ -166,18 +178,14 @@ export async function PUT(
         // 创建新的关联
         if (testCases.length > 0) {
           logger.db(OperationType.CREATE, 'TestSuiteCase', 'createMany', { count: testCases.length });
-          await Promise.all(
-            testCases.map((tc: any, index: number) =>
-              tx.testSuiteCase.create({
-                data: {
-                  suiteId: id,
-                  testCaseId: tc.testCaseId || tc.id,
-                  order: tc.order !== undefined ? tc.order : index + 1,
-                  enabled: tc.enabled !== undefined ? tc.enabled : true,
-                },
-              })
-            )
-          );
+          await tx.testSuiteCase.createMany({
+            data: testCases.map((tc: any, index: number) => ({
+              suiteId: id,
+              testCaseId: tc.testCaseId || tc.id,
+              order: tc.order !== undefined ? tc.order : index + 1,
+              enabled: tc.enabled !== undefined ? tc.enabled : true,
+            })),
+          });
         }
       }
 

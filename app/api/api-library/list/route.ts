@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const platform = searchParams.get('platform');
     const component = searchParams.get('component');
     const feature = searchParams.get('feature');
+    const subFeature = searchParams.get('subFeature');
 
     // 构建查询条件
     const where: any = {};
@@ -66,6 +67,13 @@ export async function GET(request: NextRequest) {
         where.feature = feature;
       }
     }
+    if (subFeature) {
+      if (subFeature === '__NULL__') {
+        where.subFeature = null;
+      } else {
+        where.subFeature = subFeature;
+      }
+    }
 
     if (search) {
       where.OR = [
@@ -89,6 +97,8 @@ export async function GET(request: NextRequest) {
             tag: true,
           },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
       orderBy: {
         createdAt: 'desc',
@@ -112,6 +122,7 @@ export async function GET(request: NextRequest) {
       platform: api.platform,
       component: api.component,
       feature: api.feature,
+      subFeature: api.subFeature,
       // 旧的分类（向后兼容）
       categoryId: api.categoryId,
       category: api.category,
@@ -122,6 +133,8 @@ export async function GET(request: NextRequest) {
       responseTime: api.responseTime,
       responseSize: api.responseSize,
       isStarred: api.isStarred,
+      createdByUser: api.createdByUser,
+      updatedByUser: api.updatedByUser,
       isArchived: api.isArchived,
       importSource: api.importSource,
       // 不返回大字段：requestHeaders, requestQuery, requestBody, responseHeaders, responseBody, rawHarEntry, schema, generatedParams

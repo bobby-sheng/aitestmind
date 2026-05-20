@@ -19,14 +19,22 @@ interface FourLayerSelectorProps {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
   };
   onChange: (value: {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
   }) => void;
   allowCreate?: boolean; // 是否允许创建新分类
   refreshTrigger?: boolean; // 用于触发数据刷新
+  /**
+   * 是否启用第 4 层子功能选择（与第 3 层联动）
+   * - 开启后：第 3 层下拉只展示“父功能名称”，选择后在下方展示该父功能下的所有子功能（单选）
+   * - 关闭时：保持原有行为，仅使用 feature 作为完整路径
+   */
+  enableSubFeature?: boolean;
 }
 
 export function FourLayerSelector({
@@ -34,6 +42,7 @@ export function FourLayerSelector({
   onChange,
   allowCreate = true,
   refreshTrigger,
+  enableSubFeature = false,
 }: FourLayerSelectorProps) {
   const t = useTranslations('apiRepository.fourLayerSelector');
   const tCommon = useTranslations('common');
@@ -205,12 +214,12 @@ export function FourLayerSelector({
     if (feature === '__create__') {
       setCreateMode({ ...createMode, feature: true });
       setNewValues({ ...newValues, feature: '' });
-      onChange({ ...value, feature: undefined });
+      onChange({ ...value, feature: undefined, subFeature: undefined });
     } else if (createMode.feature) {
       setNewValues({ ...newValues, feature });
-      onChange({ ...value, feature });
+      onChange({ ...value, feature, subFeature: undefined });
     } else {
-      onChange({ ...value, feature });
+      onChange({ ...value, feature, subFeature: undefined });
       setCreateMode({ ...createMode, feature: false });
     }
   };
@@ -223,6 +232,48 @@ export function FourLayerSelector({
   const availableFeatures =
     value.platform && value.component
       ? existingData.features.get(`${value.platform}-${value.component}`) || []
+      : [];
+
+  // ===== 功能 & 子功能派生结构（仅在启用子功能模式时使用） =====
+  let featureRoots: string[] = [];
+  let subFeatureMap: Map<string, string[]> = new Map();
+
+  if (enableSubFeature && availableFeatures.length > 0) {
+    const rootSet = new Set<string>();
+    const tempSubMap = new Map<string, Set<string>>();
+
+    for (const featurePath of availableFeatures) {
+      if (!featurePath) continue;
+      const segments = featurePath
+        .split('>')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (segments.length === 0) continue;
+
+      const root = segments[0];
+      rootSet.add(root);
+
+      if (segments.length > 1) {
+        const leafSub = segments[segments.length - 1];
+        if (!tempSubMap.has(root)) {
+          tempSubMap.set(root, new Set());
+        }
+        tempSubMap.get(root)!.add(leafSub);
+      }
+    }
+
+    featureRoots = Array.from(rootSet).sort();
+    subFeatureMap = new Map(
+      Array.from(tempSubMap.entries()).map(([root, set]) => [
+        root,
+        Array.from(set).sort(),
+      ]),
+    );
+  }
+
+  const availableSubFeatures =
+    enableSubFeature && value.feature
+      ? subFeatureMap.get(value.feature) || []
       : [];
 
   return (
@@ -376,13 +427,53 @@ export function FourLayerSelector({
                     </div>
                   </SelectItem>
                 )}
-                {availableFeatures.map((feature) => (
-                  <SelectItem key={feature} value={feature}>
-                    {feature}
+                {/* 启用子功能模式时：第 3 层只展示父功能名称 */}
+                {enableSubFeature
+                  ? featureRoots.map((root) => (
+                      <SelectItem key={root} value={root}>
+                        {root}
+                      </SelectItem>
+                    ))
+                  : availableFeatures.map((feature) => (
+                      <SelectItem key={feature} value={feature}>
+                        {feature}
+                      </SelectItem>
+                    ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+
+      {/* 子功能 (第4层) - 仅在启用子功能模式且有父功能时展示，单选 */}
+      {enableSubFeature && value.platform && value.component && value.feature && (
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Grid className="h-4 w-4" />
+            {t('subFeature')}
+          </Label>
+          {availableSubFeatures.length > 0 ? (
+            <Select
+              value={value.subFeature || ''}
+              onValueChange={(sub) =>
+                onChange({ ...value, subFeature: sub || undefined })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t('selectSubFeaturePlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableSubFeatures.map((sub) => (
+                  <SelectItem key={sub} value={sub}>
+                    {sub}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              {t('noSubFeatureForCurrentFeature')}
+            </div>
           )}
         </div>
       )}
@@ -403,6 +494,12 @@ export function FourLayerSelector({
               <>
                 <span>→</span>
                 <span>{value.feature}</span>
+              </>
+            )}
+            {enableSubFeature && value.subFeature && (
+              <>
+                <span>→</span>
+                <span>{value.subFeature}</span>
               </>
             )}
           </div>

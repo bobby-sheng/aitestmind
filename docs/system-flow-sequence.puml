@@ -1,0 +1,487 @@
+@startuml 系统整体流程时序图
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 10
+skinparam maxmessagesize 60
+
+title API智能测试平台 - 系统整体流程时序图
+
+actor 用户
+participant "浏览器\n(Browser)" as Browser
+participant "前端应用\n(Next.js Frontend)" as Frontend
+participant "Next.js API\n(API Routes)" as NextAPI
+database "数据库\n(PostgreSQL + Prisma)" as DB
+participant "PlaywrightRecorder\n(浏览器录制器)" as PlaywrightRecorder
+participant "ProxyRecorder\n(代理录制器)" as ProxyRecorder
+participant "mitmproxy\n(代理服务器)" as MitmProxy
+participant "AI客户端\n(OpenAI/DeepSeek)" as AIClient
+participant "Python执行器\n(FastAPI)" as Executor
+participant "SuiteExecutor\n(套件执行器)" as SuiteExecutor
+participant "TestExecutor\n(用例执行器)" as TestExecutor
+participant "VariableManager\n(变量管理器)" as VarMgr
+participant "AssertionEngine\n(断言引擎)" as AssertEngine
+participant "HTTP客户端\n(httpx)" as HTTPClient
+participant "目标API\n(Target API)" as TargetAPI
+
+== 阶段1: 用户认证 ==
+
+用户 -> Browser: 访问平台
+Browser -> Frontend: 加载登录页面
+Frontend -> Frontend: 检查登录状态
+
+alt 未登录
+    Frontend -> Browser: 显示登录页面
+    用户 -> Browser: 输入用户名密码
+    Browser -> Frontend: 提交登录表单
+    Frontend -> NextAPI: POST /api/auth/login
+    NextAPI -> DB: 验证用户凭证
+    DB --> NextAPI: 返回用户信息
+    NextAPI -> NextAPI: 生成JWT Token
+    NextAPI --> Frontend: 返回Token和用户信息
+    Frontend -> Browser: 保存Token到Cookie/Storage
+end
+
+== 阶段2: API采集流程 ==
+
+用户 -> Browser: 进入API采集页面
+Browser -> Frontend: 加载API采集界面
+Frontend -> Frontend: 显示三种采集模式\n(Playwright浏览器、代理、mitmproxy)
+
+alt 模式1: Playwright浏览器录制
+    用户 -> Browser: 选择Playwright模式\n输入目标网站URL
+    Browser -> Frontend: 点击开始录制
+    Frontend -> NextAPI: POST /api/recording/start\n(url)
+    NextAPI -> PlaywrightRecorder: 获取录制器实例
+    NextAPI -> PlaywrightRecorder: startRecording(url)
+    PlaywrightRecorder -> PlaywrightRecorder: 启动Chromium浏览器\n监听网络请求
+    PlaywrightRecorder --> NextAPI: 返回session信息
+    NextAPI --> Frontend: 返回session信息\n(包含浏览器窗口)
+    Frontend -> Browser: 显示浏览器窗口\n用户开始操作网站
+    
+else 模式2: HTTP代理录制
+    用户 -> Browser: 选择代理模式\n配置代理端口
+    Browser -> Frontend: 点击开始录制
+    Frontend -> NextAPI: POST /api/proxy/start\n(port: 8899)
+    NextAPI -> ProxyRecorder: 启动HTTP代理服务器
+    ProxyRecorder -> ProxyRecorder: 监听指定端口\n拦截HTTP请求
+    ProxyRecorder --> NextAPI: 返回代理地址和session
+    NextAPI --> Frontend: 返回代理地址和session
+    Frontend -> Browser: 显示代理配置信息\n用户配置系统/应用代理
+    
+else 模式3: mitmproxy录制
+    用户 -> Browser: 选择mitmproxy模式\n配置代理端口
+    Browser -> Frontend: 点击开始录制
+    Frontend -> NextAPI: POST /api/mitm/start\n(port: 8899)
+    NextAPI -> MitmProxy: 启动mitmproxy服务器
+    MitmProxy -> MitmProxy: 启动mitmdump进程\n加载录制插件
+    MitmProxy --> NextAPI: 返回代理地址、证书路径和session
+    NextAPI --> Frontend: 返回代理地址、证书路径和session
+    Frontend -> Browser: 显示代理和证书配置\n用户配置系统/应用代理和安装证书
+end
+
+note over Frontend,NextAPI: 通过SSE实时接收捕获的API请求
+
+Frontend -> NextAPI: GET /api/recording/stream\n或/api/proxy/stream或/api/mitm/stream\n(建立SSE连接)
+
+loop 实时捕获API请求
+    alt Playwright模式
+        PlaywrightRecorder -> PlaywrightRecorder: 捕获网络请求\n(过滤静态资源)
+        PlaywrightRecorder -> NextAPI: 推送请求数据
+    else 代理模式
+        ProxyRecorder -> ProxyRecorder: 拦截HTTP请求\n(过滤静态资源)
+        ProxyRecorder -> NextAPI: 推送请求数据
+    else mitmproxy模式
+        MitmProxy -> MitmProxy: 拦截HTTP请求\n(过滤静态资源)
+        MitmProxy -> NextAPI: 推送请求数据
+    end
+    
+    NextAPI -> NextAPI: 解析请求信息\n(URL, Method, Headers, Body, Params)
+    NextAPI -> NextAPI: 解析响应信息\n(Status, Headers, Body)
+    NextAPI --> Frontend: SSE推送新请求\n(type: new-request, data: API信息)
+    Frontend -> Browser: 实时显示捕获的API列表\n(更新UI)
+end
+
+用户 -> Browser: 停止录制
+Browser -> Frontend: 点击停止按钮
+Frontend -> NextAPI: POST /api/recording/stop\n或/api/proxy/stop或/api/mitm/stop
+NextAPI -> NextAPI: 停止录制服务\n关闭浏览器/代理服务器
+NextAPI --> Frontend: 返回停止确认
+Frontend -> Browser: 显示捕获的API列表
+
+用户 -> Browser: 查看API详情
+Browser -> Frontend: 点击API列表项
+Frontend -> Frontend: 显示API详情对话框\n(请求信息、响应信息)
+
+用户 -> Browser: 批量保存API到仓库
+Browser -> Frontend: 选择要保存的API\n填写分类、标签等信息
+Frontend -> NextAPI: POST /api/api-library/save\n(apis: 批量API数据)
+NextAPI -> DB: 批量创建/更新Api记录\n(提取域名、路径参数化、过滤请求头)
+DB --> NextAPI: 返回保存结果
+NextAPI --> Frontend: 返回成功信息
+Frontend -> Browser: 显示保存成功提示
+
+alt 导入HAR文件
+    用户 -> Browser: 选择HAR文件导入
+    Browser -> Frontend: 上传HAR文件
+    Frontend -> Frontend: 解析HAR文件\n提取API请求列表
+    Frontend -> Browser: 显示解析后的API列表
+    Frontend -> NextAPI: POST /api/api-library/save\n(apis: HAR解析的API数据, importSource: har)
+    NextAPI -> DB: 批量保存API记录
+    DB --> NextAPI: 返回保存结果
+    NextAPI --> Frontend: 返回成功信息
+end
+
+== 阶段3: AI生成测试用例 ==
+
+用户 -> Browser: 进入AI生成页面
+Browser -> Frontend: 加载AI生成界面
+Frontend -> NextAPI: GET /api/conversations
+NextAPI -> DB: 查询对话列表
+DB --> NextAPI: 返回对话列表
+NextAPI --> Frontend: 返回对话数据
+Frontend -> Browser: 显示对话列表
+
+alt 创建新对话
+    用户 -> Browser: 点击新建对话
+    Browser -> Frontend: 触发创建
+    Frontend -> NextAPI: POST /api/conversations\n(title: 新对话)
+    NextAPI -> DB: 创建Conversation记录
+    DB --> NextAPI: 返回对话ID
+    NextAPI --> Frontend: 返回对话信息
+    Frontend -> Browser: 打开新对话界面
+else 选择已有对话
+    用户 -> Browser: 选择已有对话
+    Browser -> Frontend: 加载对话
+    Frontend -> NextAPI: GET /api/conversations/{id}/messages
+    NextAPI -> DB: 查询对话消息
+    DB --> NextAPI: 返回消息列表
+    NextAPI --> Frontend: 返回消息数据
+    Frontend -> Browser: 显示对话历史
+end
+
+用户 -> Browser: 输入测试需求\n(自然语言描述)
+Browser -> Frontend: 选择测试类型\n(接口测试/E2E测试)
+Frontend -> NextAPI: POST /api/ai/smart-generate\n(userInput, testType)\n(建立SSE连接)
+
+    NextAPI -> AIClient: 加载AI客户端\n(OpenAI/DeepSeek等)
+    AIClient --> NextAPI: AI客户端就绪
+    NextAPI -> NextAPI: 获取System Prompt\n(根据testType选择)
+NextAPI --> Frontend: SSE推送思考消息\n(type: thinking, content: 正在分析需求...)
+
+NextAPI -> NextAPI: 调用AI Function Calling\n(第一轮: 分析需求)
+
+loop AI Function Calling循环(最多15轮)
+    NextAPI -> AIClient: 发送用户需求\n(包含System Prompt和Function Definitions)
+    AIClient -> AIClient: AI分析用户需求\n提取关键词、判断测试类型
+    
+    AIClient -> NextAPI: 调用search_apis工具\n(搜索相关API)
+    NextAPI -> DB: 查询Api记录\n(按关键词搜索)
+    DB --> NextAPI: 返回匹配的API列表
+    NextAPI --> NextAPI: 返回API搜索结果
+    
+    AIClient -> NextAPI: 调用get_api_detail工具\n(获取API详情)
+    NextAPI -> DB: 查询Api详情\n(包含请求参数、响应结构)
+    DB --> NextAPI: 返回API详情
+    NextAPI --> AIClient: 返回API详情数据
+    
+    alt 需要清理操作
+        AIClient -> NextAPI: 调用smart_search_delete_api工具\n(搜索删除类API)
+        NextAPI -> DB: 查询删除类API
+        DB --> NextAPI: 返回删除API列表
+        NextAPI --> AIClient: 返回删除API数据
+    end
+    
+    AIClient -> AIClient: AI设计测试用例\n(判断API组合、执行顺序、变量引用)
+    AIClient --> NextAPI: 返回设计概览
+    NextAPI --> Frontend: SSE推送设计概览\n(type: design, content: 用例设计说明)
+    
+    AIClient -> AIClient: AI生成编排指令\n(orchestrationPlan: {testCases, nodes, edges})
+    AIClient --> NextAPI: 返回编排指令
+    NextAPI --> Frontend: SSE推送生成进度\n(type: progress, step: 生成编排指令)
+    
+    AIClient -> NextAPI: 调用assemble_and_create_test_cases工具\n(传入orchestrationPlan)
+    
+    NextAPI -> NextAPI: 收集所有需要的API ID
+    NextAPI -> DB: 批量查询API详情\n(根据apiId)
+    DB --> NextAPI: 返回API详情缓存
+    
+    NextAPI -> NextAPI: 遍历每个测试用例\n组装完整flowConfig
+    loop 遍历每个测试用例
+        NextAPI -> NextAPI: 解析编排指令\n(节点、边、变量引用)
+        NextAPI -> NextAPI: 应用变量引用到requestConfig
+        NextAPI -> NextAPI: 转换params为ParamValue格式
+        NextAPI -> NextAPI: 自动计算节点位置
+        NextAPI -> NextAPI: 添加start和end节点
+        NextAPI -> NextAPI: 生成完整flowConfig
+        
+        NextAPI -> DB: 创建TestCase记录\n(name, description, flowConfig, category, tags)
+        DB --> NextAPI: 返回新用例ID
+        NextAPI --> Frontend: SSE推送用例创建\n(type: test_case_created, data: 用例信息)
+    end
+    
+    NextAPI --> AIClient: 返回创建结果
+    AIClient --> NextAPI: 返回最终响应
+    NextAPI --> Frontend: SSE推送完成消息\n(type: complete, data: 创建统计)
+end
+
+NextAPI -> DB: 保存对话消息\n(用户消息和AI响应)
+DB --> NextAPI: 确认保存
+NextAPI --> Frontend: SSE推送消息保存完成
+Frontend -> Browser: 显示生成的测试用例\n(可跳转到测试编排页面查看)
+
+== 阶段4: 手动创建测试用例 ==
+
+用户 -> Browser: 进入测试编排页面
+Browser -> Frontend: 加载测试编排界面
+Frontend -> NextAPI: GET /api/test-cases
+NextAPI -> DB: 查询测试用例列表
+DB --> NextAPI: 返回用例列表
+NextAPI --> Frontend: 返回用例数据
+Frontend -> Browser: 显示用例列表
+
+用户 -> Browser: 创建新测试用例
+Browser -> Frontend: 点击创建按钮
+Frontend -> NextAPI: POST /api/test-cases
+NextAPI -> DB: 创建TestCase记录
+DB --> NextAPI: 返回新用例ID
+NextAPI --> Frontend: 返回用例信息
+Frontend -> Browser: 打开用例编辑界面
+
+用户 -> Browser: 从API仓库选择API
+Browser -> Frontend: 打开API选择对话框
+Frontend -> NextAPI: GET /api/api-library/list
+NextAPI -> DB: 查询Api列表
+DB --> NextAPI: 返回API列表
+NextAPI --> Frontend: 返回API数据
+Frontend -> Browser: 显示API列表供选择
+
+用户 -> Browser: 选择API并添加到流程
+Browser -> Frontend: 创建API节点\n(使用选中的API信息)
+Frontend -> Frontend: 更新流程图配置
+
+用户 -> Browser: 拖拽节点构建流程
+Browser -> Frontend: 更新流程图配置\n(添加边、调整顺序)
+Frontend -> Frontend: 保存到本地状态
+
+用户 -> Browser: 配置API节点
+Browser -> Frontend: 填写参数、断言、变量提取
+Frontend -> Frontend: 更新节点配置
+
+用户 -> Browser: 保存测试用例
+Browser -> Frontend: 点击保存按钮
+Frontend -> NextAPI: PUT /api/test-cases/{id}
+NextAPI -> DB: 更新TestCase记录\n(flowConfig, nodes, edges)
+DB --> NextAPI: 确认更新
+NextAPI --> Frontend: 返回成功
+Frontend -> Browser: 显示保存成功提示
+
+== 阶段5: 创建测试套件 ==
+
+用户 -> Browser: 进入测试套件页面
+Browser -> Frontend: 加载套件列表
+Frontend -> NextAPI: GET /api/test-suites
+NextAPI -> DB: 查询测试套件列表
+DB --> NextAPI: 返回套件列表
+NextAPI --> Frontend: 返回套件数据
+Frontend -> Browser: 显示套件列表
+
+用户 -> Browser: 创建新测试套件
+Browser -> Frontend: 点击创建按钮
+Frontend -> NextAPI: POST /api/test-suites
+NextAPI -> DB: 创建TestSuite记录
+DB --> NextAPI: 返回新套件ID
+NextAPI --> Frontend: 返回套件信息
+Frontend -> Browser: 打开套件编辑界面
+
+用户 -> Browser: 添加测试用例到套件
+Browser -> Frontend: 选择用例并设置顺序
+Frontend -> NextAPI: POST /api/test-suites/{id}/test-cases
+NextAPI -> DB: 创建TestSuiteCase关联记录
+DB --> NextAPI: 确认创建
+NextAPI --> Frontend: 返回成功
+Frontend -> Browser: 更新套件用例列表
+
+用户 -> Browser: 配置环境设置
+Browser -> Frontend: 设置BaseURL、认证等
+Frontend -> NextAPI: PUT /api/test-suites/{id}
+NextAPI -> DB: 更新TestSuite环境配置
+DB --> NextAPI: 确认更新
+NextAPI --> Frontend: 返回成功
+
+== 阶段6: 执行测试套件 ==
+
+用户 -> Browser: 点击执行测试套件
+Browser -> Frontend: 触发执行请求
+Frontend -> NextAPI: POST /api/test-suites/{id}/execute\n(triggered_by: manual)
+
+NextAPI -> DB: 查询测试套件信息\n(包含用例列表)
+DB --> NextAPI: 返回套件及用例数据
+
+NextAPI -> DB: 获取环境配置\n(全局配置或套件配置)
+DB --> NextAPI: 返回环境配置
+
+NextAPI -> DB: 创建TestSuiteExecution记录\n(status: pending)
+DB --> NextAPI: 返回executionId
+
+NextAPI -> Executor: POST /api/execute-suite\n(suite_execution_id, suite_id, environment_config)
+NextAPI --> Frontend: 返回执行ID和基本信息
+
+Frontend -> Browser: 显示执行已启动提示\n跳转到执行监控页面
+
+Executor -> SuiteExecutor: execute_suite()
+
+SuiteExecutor -> DB: 获取测试套件执行记录
+DB --> SuiteExecutor: 返回执行记录
+
+SuiteExecutor -> DB: 获取测试用例列表\n(按order排序，只获取enabled=true的)
+DB --> SuiteExecutor: 返回用例列表
+
+SuiteExecutor -> DB: 更新TestSuiteExecution\n(status: running)
+
+loop 遍历每个测试用例
+    SuiteExecutor -> DB: 创建TestCaseExecution记录\n(status: pending, order)
+    DB --> SuiteExecutor: 返回case_execution_id
+    
+    SuiteExecutor -> TestExecutor: execute_test_case()\n(传入case_execution_id, suite_execution_id)
+    
+    TestExecutor -> VarMgr: 初始化变量管理器\n(从flowConfig.variables)
+    VarMgr --> TestExecutor: 变量管理器就绪
+    
+    TestExecutor -> AssertEngine: 初始化断言引擎\n(传入变量管理器)
+    AssertEngine --> TestExecutor: 断言引擎就绪
+    
+    TestExecutor -> TestExecutor: 构建执行顺序\n(解析nodes和edges，区分普通节点和清理节点)
+    
+    loop 遍历每个普通节点
+        TestExecutor -> DB: 创建StepExecution记录\n(status: pending, order)
+        DB --> TestExecutor: 返回step_execution_id
+        
+        TestExecutor -> DB: 创建执行日志\n(level: info, message: 开始执行节点)
+        
+        TestExecutor -> VarMgr: 解析节点配置中的变量\n(URL, Headers, Body, Params)
+        VarMgr --> TestExecutor: 返回解析后的值
+        
+        alt 节点类型: API请求节点
+            TestExecutor -> TestExecutor: 构建HTTP请求\n(URL, Method, Headers, Body, Params)
+            TestExecutor -> HTTPClient: 发送HTTP请求
+            HTTPClient -> TargetAPI: HTTP请求
+            TargetAPI --> HTTPClient: HTTP响应
+            HTTPClient --> TestExecutor: 返回响应数据\n(status, headers, body, responseTime)
+            
+            TestExecutor -> DB: 更新StepExecution\n(requestUrl, requestMethod, requestHeaders,\nrequestBody, requestParams, responseStatus,\nresponseHeaders, responseBody, responseTime)
+            
+            TestExecutor -> AssertEngine: 执行断言验证\n(传入响应数据)
+            AssertEngine -> AssertEngine: 解析断言规则\n(状态码、响应体、响应头等)
+            AssertEngine -> AssertEngine: 执行断言逻辑
+            AssertEngine --> TestExecutor: 返回断言结果列表
+            
+            TestExecutor -> DB: 更新StepExecution\n(assertionResults)
+            
+            alt 断言失败
+                TestExecutor -> DB: 更新StepExecution\n(status: failed, errorMessage)
+                TestExecutor -> DB: 创建执行日志\n(level: error, message: 断言失败)
+                TestExecutor -> TestExecutor: 标记步骤失败\n设置has_failure = true
+            else 断言成功
+                TestExecutor -> VarMgr: 提取变量\n(从响应中提取，使用JSONPath/正则)
+                VarMgr -> VarMgr: 解析提取规则
+                VarMgr -> VarMgr: 执行提取逻辑
+                VarMgr --> TestExecutor: 返回提取的变量\n(更新到变量管理器)
+                
+                TestExecutor -> DB: 更新StepExecution\n(extractedVariables, status: success)
+                TestExecutor -> DB: 创建执行日志\n(level: success, message: 节点执行成功)
+            end
+            
+        else 节点类型: 等待节点
+            TestExecutor -> TestExecutor: 执行等待逻辑\n(固定时间等待或条件等待)
+            TestExecutor -> DB: 更新StepExecution\n(status: success)
+            
+        else 节点类型: 条件判断节点
+            TestExecutor -> VarMgr: 获取条件表达式中变量
+            VarMgr --> TestExecutor: 返回变量值
+            TestExecutor -> TestExecutor: 评估条件表达式
+            TestExecutor -> DB: 更新StepExecution\n(status: success/failed)
+        end
+        
+        TestExecutor -> DB: 更新StepExecution\n(duration, endTime)
+        
+        alt 节点执行失败且非清理节点
+            TestExecutor -> TestExecutor: 标记失败，停止执行普通节点
+            break
+        end
+    end
+    
+    alt 存在后置清理节点
+        TestExecutor -> TestExecutor: 执行后置清理节点\n(无论前面成功或失败都执行)
+        
+        loop 遍历每个清理节点
+            TestExecutor -> DB: 创建StepExecution记录\n(status: pending, order, nodeName: [清理]...)
+            TestExecutor -> TestExecutor: 执行清理节点\n(同普通节点执行流程)
+            TestExecutor -> DB: 更新StepExecution\n(status, duration)
+        end
+    end
+    
+    TestExecutor -> DB: 更新TestCaseExecution\n(status: passed/failed, endTime, duration,\npassedSteps, failedSteps, totalSteps)
+    
+    TestExecutor -> DB: 创建执行日志\n(level: success/error, message: 用例执行完成)
+    
+    TestExecutor --> SuiteExecutor: 返回执行结果
+    
+    SuiteExecutor -> DB: 更新统计信息\n(passedCases, failedCases, passedSteps, failedSteps)
+end
+
+SuiteExecutor -> DB: 更新TestSuiteExecution\n(status: completed/failed, endTime, duration)
+SuiteExecutor --> Executor: 返回执行结果
+
+== 阶段7: 实时监控执行状态 ==
+
+note over Frontend,DB: 前端通过SSE轮询获取执行状态
+
+Frontend -> NextAPI: GET /api/executions/suite/{executionId}/stream\n(建立SSE连接)
+
+NextAPI -> DB: 查询TestSuiteExecution\n(包含caseExecutions和stepExecutions)
+DB --> NextAPI: 返回执行状态数据
+
+NextAPI --> Frontend: SSE推送初始状态\n(type: init, data: executionInfo)
+
+loop 每500ms轮询一次
+    NextAPI -> DB: 查询最新执行状态\n(TestSuiteExecution + 关联数据)
+    DB --> NextAPI: 返回最新状态
+    
+    NextAPI --> Frontend: SSE推送状态更新\n(type: update, data: {status, passedCases,\nfailedCases, caseExecutions, ...})
+    
+    Frontend -> Browser: 更新UI显示\n(执行进度、用例状态、步骤状态)
+    
+    alt 执行完成
+        NextAPI --> Frontend: SSE推送完成消息\n(type: complete, data: finalStats)
+        NextAPI -> NextAPI: 关闭SSE连接
+        break
+    end
+end
+
+== 阶段8: 查看执行结果 ==
+
+用户 -> Browser: 查看执行报告
+Browser -> Frontend: 加载报告页面
+Frontend -> NextAPI: GET /api/executions/suite/{executionId}
+NextAPI -> DB: 查询执行记录及详情
+DB --> NextAPI: 返回完整执行数据
+NextAPI --> Frontend: 返回执行结果
+Frontend -> Browser: 显示执行报告\n(通过率、用例详情、步骤详情)
+
+用户 -> Browser: 查看用例执行详情
+Browser -> Frontend: 点击用例执行记录
+Frontend -> NextAPI: GET /api/test-cases/{id}/executions
+NextAPI -> DB: 查询TestCaseExecution记录
+DB --> NextAPI: 返回用例执行记录
+NextAPI --> Frontend: 返回执行数据
+Frontend -> Browser: 打开CaseExecutionDialog\n显示流程图和执行详情
+
+用户 -> Browser: 查看步骤执行详情
+Browser -> Frontend: 点击步骤节点
+Frontend -> NextAPI: GET /api/execution-logs?stepExecutionId={id}
+NextAPI -> DB: 查询ExecutionLog记录
+DB --> NextAPI: 返回日志数据
+NextAPI --> Frontend: 返回日志列表
+Frontend -> Browser: 显示步骤详情\n(请求信息、响应信息、断言结果、变量提取、日志)
+
+@enduml

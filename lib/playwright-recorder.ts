@@ -120,8 +120,8 @@ export class PlaywrightRecorder {
     // 监听响应
     this.page.on('response', async (response) => {
       try {
-        // 如果暂停中，不记录请求
-        if (this.isPaused) {
+        // 录制已停止（浏览器已关）或暂停时，不再处理
+        if (!this.browser || !this.page || this.isPaused) {
           return;
         }
 
@@ -153,8 +153,10 @@ export class PlaywrightRecorder {
 
         // 清理已处理的请求记录
         this.requestTimings.delete(requestId);
-      } catch (error) {
-        console.error('Error processing response:', error);
+      } catch (error: any) {
+        if (!this.isPageClosedError(error)) {
+          console.error('Error processing response:', error);
+        }
       }
     });
 
@@ -234,6 +236,19 @@ export class PlaywrightRecorder {
   }
 
   /**
+   * 判断是否为页面/浏览器已关闭导致的不可用错误
+   */
+  private isPageClosedError(error: any): boolean {
+    const msg = error?.message ?? String(error);
+    return (
+      msg.includes('Target page, context or browser has been closed') ||
+      msg.includes('No resource with given identifier') ||
+      msg.includes('getResponseBody') ||
+      msg.includes('Protocol error')
+    );
+  }
+
+  /**
    * 构建HAR Entry
    */
   private async buildHarEntry(
@@ -243,7 +258,34 @@ export class PlaywrightRecorder {
     duration: number
   ): Promise<HarEntry> {
     const request = await this.buildHarRequest(requestData);
-    const harResponse = await this.buildHarResponse(response);
+    let harResponse: HarResponse;
+    try {
+      harResponse = await this.buildHarResponse(response);
+    } catch (error: any) {
+      if (this.isPageClosedError(error)) {
+        harResponse = {
+          status: 0,
+          statusText: 'Resource unavailable (page closed)',
+          httpVersion: 'HTTP/1.1',
+          cookies: [],
+          headers: [],
+          content: { size: 0, mimeType: 'application/octet-stream' },
+          redirectURL: '',
+          headersSize: -1,
+          bodySize: -1,
+        };
+      } else {
+        throw error;
+      }
+    }
+
+    let serverIPAddress: string | undefined;
+    try {
+      serverIPAddress = response.serverAddr()?.ipAddress;
+    } catch {
+      serverIPAddress = undefined;
+    }
+
     const timings = this.buildHarTimings(duration);
 
     return {
@@ -253,7 +295,7 @@ export class PlaywrightRecorder {
       response: harResponse,
       cache: {},
       timings,
-      serverIPAddress: response.serverAddr()?.ipAddress,
+      serverIPAddress,
       _resourceType: requestData.resourceType,
     };
   }
@@ -311,10 +353,55 @@ export class PlaywrightRecorder {
 
     let postData: HarPostData | undefined;
     if (requestData.postData) {
+      const contentType = requestData.headers['content-type'] || requestData.headers['Content-Type'] || 'application/octet-stream';
+      const contentTypeLower = contentType.toLowerCase();
+      
       postData = {
-        mimeType: requestData.headers['content-type'] || 'application/octet-stream',
+        mimeType: contentType,
         text: requestData.postData,
       };
+      
+      // 对于 form-data 和 urlencoded 类型，尝试解析为 params 数组
+      if (contentTypeLower.includes('application/x-www-form-urlencoded')) {
+        try {
+          const params = new URLSearchParams(requestData.postData);
+          postData.params = [];
+          params.forEach((value, name) => {
+            postData!.params!.push({ name, value });
+          });
+        } catch {
+          // 解析失败，保留原始 text
+        }
+      } else if (contentTypeLower.includes('multipart/form-data')) {
+        // multipart/form-data 比较复杂，尝试简单解析
+        // 注意：这里只处理简单的文本字段，不处理文件上传
+        try {
+          // 从 Content-Type 中提取 boundary
+          const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
+          if (boundaryMatch) {
+            const boundary = boundaryMatch[1].replace(/^["']|["']$/g, '');
+            const parts = requestData.postData.split('--' + boundary);
+            postData.params = [];
+            
+            for (const part of parts) {
+              if (part.includes('Content-Disposition')) {
+                const nameMatch = part.match(/name="([^"]+)"/);
+                if (nameMatch) {
+                  const name = nameMatch[1];
+                  // 提取值（在空行之后的内容）
+                  const valueMatch = part.split('\r\n\r\n')[1];
+                  if (valueMatch) {
+                    const value = valueMatch.replace(/\r\n--$/, '').trim();
+                    postData.params.push({ name, value });
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // 解析失败，保留原始 text
+        }
+      }
     }
 
     return {
@@ -334,12 +421,36 @@ export class PlaywrightRecorder {
    * 构建HAR Response
    */
   private async buildHarResponse(response: any): Promise<HarResponse> {
-    const headers: HarHeader[] = Object.entries(response.headers()).map(([name, value]) => ({
-      name,
-      value: value as string,
-    }));
+    let headers: HarHeader[] = [];
+    let status = 0;
+    let statusText = 'Unknown';
+    let contentType = 'application/octet-stream';
 
-    const contentType = response.headers()['content-type'] || 'application/octet-stream';
+    try {
+      headers = Object.entries(response.headers()).map(([name, value]) => ({
+        name,
+        value: value as string,
+      }));
+      contentType = response.headers()['content-type'] || contentType;
+      status = response.status();
+      statusText = response.statusText();
+    } catch (error: any) {
+      if (this.isPageClosedError(error)) {
+        return {
+          status: 0,
+          statusText: 'Resource unavailable (page closed)',
+          httpVersion: 'HTTP/1.1',
+          cookies: [],
+          headers: [],
+          content: { size: 0, mimeType: 'application/octet-stream' },
+          redirectURL: '',
+          headersSize: -1,
+          bodySize: -1,
+        };
+      }
+      throw error;
+    }
+
     let content: HarContent = {
       size: 0,
       mimeType: contentType,
@@ -370,22 +481,19 @@ export class PlaywrightRecorder {
       }
       // 对于二进制文件（图片、字体等），不保存内容，只记录大小
     } catch (error: any) {
-      // 某些响应无法获取body，这是正常的：
-      // - 204 No Content
-      // - 304 Not Modified
-      // - 某些被缓存的资源
-      // - 某些静态资源（图片、字体等）
-      // 只在非预期错误时输出警告
-      if (!error.message?.includes('No data found for resource')) {
+      // 页面/浏览器已关闭或资源不可用时不打日志，其它情况仅对非预期错误输出警告
+      const silent =
+        this.isPageClosedError(error) ||
+        (error.message?.includes && error.message.includes('No data found for resource'));
+      if (!silent) {
         console.warn('Failed to get response body:', error.message);
       }
-      // 设置为0，表示没有body或无法获取
       content.size = 0;
     }
 
     return {
-      status: response.status(),
-      statusText: response.statusText(),
+      status,
+      statusText,
       httpVersion: 'HTTP/1.1',
       cookies: [],
       headers,
@@ -502,6 +610,45 @@ export class PlaywrightRecorder {
       // 注意：不在这里过滤headers，统一在保存入库时根据平台设置的白名单过滤
       // 这样用户可以通过平台设置控制是否过滤以及过滤哪些headers
       
+      // 解析请求体和请求体类型
+      const postData = entry.request.postData;
+      let requestBody: any = postData?.text;
+      const requestMimeType = postData?.mimeType;
+      
+      // 对于 form-data 和 urlencoded，尝试解析为对象
+      if (postData && requestMimeType) {
+        const mimeTypeLower = requestMimeType.toLowerCase();
+        if (mimeTypeLower.includes('application/json')) {
+          // JSON 格式：尝试解析
+          if (postData.text) {
+            try {
+              requestBody = JSON.parse(postData.text);
+            } catch {
+              requestBody = postData.text;
+            }
+          }
+        } else if (mimeTypeLower.includes('multipart/form-data') || mimeTypeLower.includes('application/x-www-form-urlencoded')) {
+          // form-data 或 urlencoded：优先使用 params
+          if (postData.params && postData.params.length > 0) {
+            requestBody = {};
+            postData.params.forEach((param) => {
+              requestBody[param.name] = param.value || '';
+            });
+          } else if (postData.text && mimeTypeLower.includes('urlencoded')) {
+            // 尝试从 text 解析 urlencoded
+            try {
+              const params = new URLSearchParams(postData.text);
+              requestBody = {};
+              params.forEach((value, key) => {
+                requestBody[key] = value;
+              });
+            } catch {
+              requestBody = postData.text;
+            }
+          }
+        }
+      }
+      
       return {
         id: `req_${index}`,
         method: entry.request.method,
@@ -517,7 +664,8 @@ export class PlaywrightRecorder {
         queryParams: Object.fromEntries(
           entry.request.queryString.map((q) => [q.name, q.value])
         ),
-        requestBody: entry.request.postData?.text,
+        requestBody,
+        requestMimeType,
         responseHeaders: rawResponseHeaders,
         responseBody: entry.response.content.text,
         mimeType: entry.response.content.mimeType,
@@ -580,6 +728,45 @@ export class PlaywrightRecorder {
     // 注意：不在这里过滤headers，统一在保存入库时根据平台设置的白名单过滤
     // 这样用户可以通过平台设置控制是否过滤以及过滤哪些headers
     
+    // 解析请求体和请求体类型
+    const postData = harEntry.request.postData;
+    let requestBody: any = postData?.text;
+    const requestMimeType = postData?.mimeType;
+    
+    // 对于 form-data 和 urlencoded，尝试解析为对象
+    if (postData && requestMimeType) {
+      const mimeTypeLower = requestMimeType.toLowerCase();
+      if (mimeTypeLower.includes('application/json')) {
+        // JSON 格式：尝试解析
+        if (postData.text) {
+          try {
+            requestBody = JSON.parse(postData.text);
+          } catch {
+            requestBody = postData.text;
+          }
+        }
+      } else if (mimeTypeLower.includes('multipart/form-data') || mimeTypeLower.includes('application/x-www-form-urlencoded')) {
+        // form-data 或 urlencoded：优先使用 params
+        if (postData.params && postData.params.length > 0) {
+          requestBody = {};
+          postData.params.forEach((param) => {
+            requestBody[param.name] = param.value || '';
+          });
+        } else if (postData.text && mimeTypeLower.includes('urlencoded')) {
+          // 尝试从 text 解析 urlencoded
+          try {
+            const params = new URLSearchParams(postData.text);
+            requestBody = {};
+            params.forEach((value, key) => {
+              requestBody[key] = value;
+            });
+          } catch {
+            requestBody = postData.text;
+          }
+        }
+      }
+    }
+    
     const summary: ApiRequestSummary = {
       id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       method: harEntry.request.method,
@@ -595,7 +782,8 @@ export class PlaywrightRecorder {
       queryParams: Object.fromEntries(
         harEntry.request.queryString.map((q) => [q.name, q.value])
       ),
-      requestBody: harEntry.request.postData?.text,
+      requestBody,
+      requestMimeType,
       responseHeaders: rawResponseHeaders,
       responseBody: harEntry.response.content.text,
       mimeType: harEntry.response.content.mimeType,

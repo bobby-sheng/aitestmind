@@ -24,6 +24,7 @@ export interface AIMessage {
   content: string | null;
   tool_call_id?: string;
   tool_calls?: AIToolCall[];
+  reasoning_content?: string;
 }
 
 export interface AITool {
@@ -46,6 +47,7 @@ export interface AIToolCall {
 export interface AIResponse {
   content: string | null;
   toolCalls: AIToolCall[];
+  reasoningContent?: string;
   usage?: {
     promptTokens: number;
     completionTokens: number;

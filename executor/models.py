@@ -56,12 +56,22 @@ class ParamValue(BaseModel):
     template: Optional[str] = None  # 模板字符串
 
 
+class ContentType(str, Enum):
+    """请求体内容类型"""
+    JSON = "json"
+    FORM_DATA = "form-data"
+    X_WWW_FORM_URLENCODED = "x-www-form-urlencoded"
+    RAW = "raw"
+    NONE = "none"
+
+
 class RequestConfig(BaseModel):
     """请求配置"""
     pathParams: Optional[Dict[str, ParamValue]] = None
     queryParams: Optional[Dict[str, ParamValue]] = None
     headers: Optional[Dict[str, ParamValue]] = None
     body: Optional[Dict[str, Any]] = None  # 支持嵌套结构
+    contentType: Optional[ContentType] = ContentType.JSON  # 请求体内容类型，默认为 JSON
 
 
 class ResponseExtract(BaseModel):

@@ -11,7 +11,7 @@ interface ThemeStyleContextType {
 
 const ThemeStyleContext = createContext<ThemeStyleContextType | undefined>(undefined)
 
-const THEME_STORAGE_KEY = 'AI TestMind-theme-style'
+const THEME_STORAGE_KEY = 'API 智能测试平台-theme-style'
 
 export function ThemeStyleProvider({ children }: { children: React.ReactNode }) {
   const [currentTheme, setCurrentTheme] = useState<ThemeConfig>(themes[0])

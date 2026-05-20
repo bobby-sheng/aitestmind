@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,26 @@ export default function HeadersEditor({
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
   const [showVarSelector, setShowVarSelector] = useState<string | null>(null);
+  const varSelectorRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // 点击外部关闭下拉框
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showVarSelector) {
+        const ref = varSelectorRefs.current[showVarSelector];
+        if (ref && !ref.contains(event.target as Node)) {
+          setShowVarSelector(null);
+        }
+      }
+    };
+
+    if (showVarSelector) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showVarSelector]);
 
   // 将values转换为HeaderRow数组
   const valuesToRows = (vals: Record<string, ParamValue>): HeaderRow[] => {
@@ -305,7 +325,13 @@ export default function HeadersEditor({
                       </Button>
 
                       {showVarSelector === `${index}` && (
-                        <div className="absolute z-10 top-full left-0 right-0 mt-1">
+                        <div 
+                          ref={(el) => {
+                            varSelectorRefs.current[`${index}`] = el;
+                          }}
+                          className="absolute z-50 top-full left-0 mt-1 w-full min-w-[400px] max-w-[600px] shadow-lg border border-[#e5e7eb] dark:border-[#4b5563] rounded-md bg-background"
+                          style={{ maxHeight: '400px' }}
+                        >
                           <VariableSelector
                             nodes={nodes}
                             currentNodeId={currentNodeId}

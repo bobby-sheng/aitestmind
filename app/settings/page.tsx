@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import type { PlatformSettings } from "@/types/platform-settings";
 import { useTranslations } from "next-intl";
+import { Eye, EyeOff, Copy, ChevronDown, ChevronRight } from "lucide-react";
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -24,7 +25,18 @@ export default function SettingsPage() {
   const [authTokenEnabled, setAuthTokenEnabled] = useState(false);
   const [authTokenKey, setAuthTokenKey] = useState('Authorization');
   const [authTokenValue, setAuthTokenValue] = useState('');
-  
+  const [showTokenValue, setShowTokenValue] = useState(false);
+
+  // Token 自动获取配置
+  const [tokenLoginApiUrl, setTokenLoginApiUrl] = useState('');
+  const [tokenLoginMethod, setTokenLoginMethod] = useState('POST');
+  const [tokenLoginRequestHeaders, setTokenLoginRequestHeaders] = useState('{}');
+  const [tokenLoginRequestBody, setTokenLoginRequestBody] = useState('{}');
+  const [tokenResponsePath, setTokenResponsePath] = useState('');
+  const [tokenUpdatedAt, setTokenUpdatedAt] = useState<string>('');
+  const [testingTokenLogin, setTestingTokenLogin] = useState(false);
+  const [showTokenAutoFetch, setShowTokenAutoFetch] = useState(false);
+
   // Session配置
   const [sessionEnabled, setSessionEnabled] = useState(false);
   const [loginApiUrl, setLoginApiUrl] = useState('');
@@ -68,6 +80,13 @@ export default function SettingsPage() {
         setAuthTokenEnabled(settings.authTokenEnabled || false);
         setAuthTokenKey(settings.authTokenKey || 'Authorization');
         setAuthTokenValue(settings.authTokenValue || '');
+        setTokenLoginApiUrl(settings.tokenLoginApiUrl || '');
+        setTokenLoginMethod(settings.tokenLoginMethod || 'POST');
+        setTokenLoginRequestHeaders(JSON.stringify(settings.tokenLoginRequestHeaders || {}, null, 2));
+        setTokenLoginRequestBody(JSON.stringify(settings.tokenLoginRequestBody || {}, null, 2));
+        setTokenResponsePath(settings.tokenResponsePath || '');
+        setTokenUpdatedAt(settings.tokenUpdatedAt ? new Date(settings.tokenUpdatedAt).toLocaleString('zh-CN') : '');
+        if (settings.tokenLoginApiUrl) setShowTokenAutoFetch(true);
         setSessionEnabled(settings.sessionEnabled || false);
         setLoginApiUrl(settings.loginApiUrl || '');
         setLoginMethod(settings.loginMethod || 'POST');
@@ -106,6 +125,8 @@ export default function SettingsPage() {
       // 验证JSON格式
       let parsedHeaders = {};
       let parsedBody = {};
+      let parsedTokenHeaders = {};
+      let parsedTokenBody = {};
       
       try {
         parsedHeaders = JSON.parse(loginRequestHeaders);
@@ -131,6 +152,30 @@ export default function SettingsPage() {
         return;
       }
 
+      try {
+        parsedTokenHeaders = JSON.parse(tokenLoginRequestHeaders);
+      } catch (e) {
+        toast({
+          title: t('toast.jsonError'),
+          description: t('toast.loginHeadersError'),
+          variant: 'destructive',
+          duration: 5000,
+        });
+        return;
+      }
+
+      try {
+        parsedTokenBody = JSON.parse(tokenLoginRequestBody);
+      } catch (e) {
+        toast({
+          title: t('toast.jsonError'),
+          description: t('toast.loginBodyError'),
+          variant: 'destructive',
+          duration: 5000,
+        });
+        return;
+      }
+
       const response = await fetch('/api/settings', {
         method: 'PUT',
         headers: {
@@ -142,6 +187,11 @@ export default function SettingsPage() {
           authTokenEnabled,
           authTokenKey,
           authTokenValue,
+          tokenLoginApiUrl,
+          tokenLoginMethod,
+          tokenLoginRequestHeaders: parsedTokenHeaders,
+          tokenLoginRequestBody: parsedTokenBody,
+          tokenResponsePath,
           sessionEnabled,
           loginApiUrl,
           loginMethod,
@@ -268,6 +318,79 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTestTokenLogin = async () => {
+    try {
+      setTestingTokenLogin(true);
+      
+      const response = await fetch('/api/platform-settings/test-token-login', {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: t('toast.tokenLoginSuccess'),
+          variant: 'success',
+          duration: 3000,
+        });
+        
+        await loadSettings();
+      } else {
+        console.error('Token登录失败:', result);
+        let errorMessage = result.error || 'Unknown error';
+        if (result.debug) {
+          console.log('调试信息:', result.debug);
+          errorMessage += `\n\n${result.debug.hint}`;
+        }
+        toast({
+          title: t('toast.tokenLoginFailed'),
+          description: errorMessage,
+          variant: 'destructive',
+          duration: 8000,
+        });
+      }
+    } catch (error) {
+      console.error('Error testing token login:', error);
+      toast({
+        title: t('toast.testException'),
+        description: t('toast.testExceptionDesc', { error: error instanceof Error ? error.message : 'Unknown error' }),
+        variant: 'destructive',
+      });
+    } finally {
+      setTestingTokenLogin(false);
+    }
+  };
+
+  const handleCopyToken = () => {
+    if (!authTokenValue) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(authTokenValue);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = authTokenValue;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      toast({
+        title: t('authToken.copySuccess'),
+        variant: 'success',
+        duration: 2000,
+      });
+    } catch {
+      toast({
+        title: t('authToken.copySuccess'),
+        variant: 'destructive',
+        duration: 2000,
+      });
+    }
+  };
+
   const handleTestAi = async () => {
     try {
       setTestingAi(true);
@@ -391,16 +514,131 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="auth-token-value">{t('authToken.tokenValue')}</Label>
-                  <Input
-                    id="auth-token-value"
-                    type="password"
-                    placeholder={t('authToken.tokenValuePlaceholder')}
-                    value={authTokenValue}
-                    onChange={(e) => setAuthTokenValue(e.target.value)}
-                  />
+                  <div className="flex items-center gap-1">
+                    <Input
+                      id="auth-token-value"
+                      type={showTokenValue ? 'text' : 'password'}
+                      placeholder={t('authToken.tokenValuePlaceholder')}
+                      value={authTokenValue}
+                      onChange={(e) => setAuthTokenValue(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => setShowTokenValue(!showTokenValue)}
+                      title={showTokenValue ? t('authToken.hideToken') : t('authToken.showToken')}
+                    >
+                      {showTokenValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={handleCopyToken}
+                      disabled={!authTokenValue}
+                      title={t('authToken.copyToken')}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {t('authToken.tokenValueHint')}
                   </p>
+                  {tokenUpdatedAt && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('authToken.lastUpdated')}: {tokenUpdatedAt}
+                    </p>
+                  )}
+                </div>
+
+                {/* 自动获取Token配置（可折叠） */}
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowTokenAutoFetch(!showTokenAutoFetch)}
+                  >
+                    {showTokenAutoFetch ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    {t('authToken.autoFetchTitle')}
+                  </button>
+
+                  {showTokenAutoFetch && (
+                    <>
+                      <div className="max-h-[400px] overflow-y-auto space-y-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-4 bg-muted/20">
+                        <div className="space-y-2">
+                          <Label htmlFor="token-login-api-url">{t('authToken.loginApiUrl')}</Label>
+                          <Input
+                            id="token-login-api-url"
+                            placeholder={t('authToken.loginApiUrlPlaceholder')}
+                            value={tokenLoginApiUrl}
+                            onChange={(e) => setTokenLoginApiUrl(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="token-login-method">{t('authToken.requestMethod')}</Label>
+                          <select
+                            id="token-login-method"
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                            value={tokenLoginMethod}
+                            onChange={(e) => setTokenLoginMethod(e.target.value)}
+                          >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="token-login-headers">{t('authToken.requestHeaders')}</Label>
+                          <textarea
+                            id="token-login-headers"
+                            className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
+                            placeholder='{"Content-Type": "application/json"}'
+                            value={tokenLoginRequestHeaders}
+                            onChange={(e) => setTokenLoginRequestHeaders(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="token-login-body">{t('authToken.requestBody')}</Label>
+                          <textarea
+                            id="token-login-body"
+                            className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
+                            placeholder='{"username": "admin", "password": "password"}'
+                            value={tokenLoginRequestBody}
+                            onChange={(e) => setTokenLoginRequestBody(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="token-response-path">{t('authToken.responsePath')}</Label>
+                          <Input
+                            id="token-response-path"
+                            placeholder={t('authToken.responsePathPlaceholder')}
+                            value={tokenResponsePath}
+                            onChange={(e) => setTokenResponsePath(e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {t('authToken.responsePathHint')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={handleTestTokenLogin}
+                        disabled={testingTokenLogin || !tokenLoginApiUrl || !tokenResponsePath}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {testingTokenLogin ? t('authToken.testingTokenLogin') : t('authToken.testTokenLogin')}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -430,7 +668,7 @@ export default function SettingsPage() {
             {sessionEnabled && (
               <>
                 {/* 滚动配置区域 */}
-                <div className="max-h-[400px] overflow-y-auto space-y-4 border rounded-md p-4 bg-muted/20">
+                <div className="max-h-[400px] overflow-y-auto space-y-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-4 bg-muted/20">
                   <div className="space-y-2">
                     <Label htmlFor="login-api-url">{t('session.loginApiUrl')}</Label>
                     <Input
@@ -480,7 +718,7 @@ export default function SettingsPage() {
                   {sessionCookies && (
                     <div className="space-y-2">
                       <Label>{t('session.savedCookies')}</Label>
-                      <div className="rounded-md border p-3 bg-muted/50 max-h-[120px] overflow-y-auto">
+                      <div className="rounded-md border border-[#e5e7eb] dark:border-[#4b5563] p-3 bg-muted/50 max-h-[120px] overflow-y-auto">
                         <p className="text-sm font-mono break-all whitespace-pre-wrap">
                           {sessionCookies}
                         </p>
@@ -625,7 +863,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* 高级配置 */}
-                <details className="border rounded-md p-4">
+                <details className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-4">
                   <summary className="cursor-pointer font-semibold">{t('ai.advancedSettings')}</summary>
                   <div className="mt-4 space-y-4">
                     <div className="space-y-2">

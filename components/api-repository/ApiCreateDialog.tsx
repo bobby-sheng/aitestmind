@@ -30,6 +30,11 @@ import {
   type ConflictDecision,
 } from '@/components/api-repository/ApiConflictResolverDialog';
 import { FourLayerSelector } from '@/components/api-repository/FourLayerSelector';
+import { 
+  RequestBodyType, 
+  REQUEST_BODY_TYPES, 
+  getMimeTypeFromBodyType 
+} from '@/types/api-library';
 
 interface ApiCreateDialogProps {
   open: boolean;
@@ -66,10 +71,13 @@ export function ApiCreateDialog({
     selectedTags: [] as string[],
     requestHeaders: '{}',
     requestBody: '',
+    bodyType: 'json' as RequestBodyType,
     responseBody: '',
     platform: undefined as string | undefined,
     component: undefined as string | undefined,
     feature: undefined as string | undefined,
+    // 子功能（第4层，可选，仅在有父功能时使用）
+    subFeature: '',
   });
   
   // 冲突检测
@@ -97,10 +105,12 @@ export function ApiCreateDialog({
       selectedTags: [],
       requestHeaders: '{}',
       requestBody: '',
+      bodyType: 'json',
       responseBody: '',
       platform: undefined,
       component: undefined,
       feature: undefined,
+      subFeature: '',
     });
     setTagSearchTerm('');
   };
@@ -233,11 +243,37 @@ export function ApiCreateDialog({
         throw new Error(t('requestHeadersFormatError'));
       }
 
-      if (formData.requestBody.trim()) {
-        try {
-          requestBody = JSON.parse(formData.requestBody);
-        } catch {
-          // 如果不是JSON，保留原始字符串
+      // 根据请求体类型处理请求体
+      if (formData.requestBody.trim() && formData.bodyType !== 'none') {
+        if (formData.bodyType === 'json') {
+          try {
+            requestBody = JSON.parse(formData.requestBody);
+          } catch {
+            // 如果不是JSON，保留原始字符串
+            requestBody = formData.requestBody;
+          }
+        } else if (formData.bodyType === 'form-data' || formData.bodyType === 'x-www-form-urlencoded') {
+          // form-data 和 x-www-form-urlencoded 格式：尝试解析为对象
+          try {
+            requestBody = JSON.parse(formData.requestBody);
+          } catch {
+            // 如果不是JSON格式，尝试解析为键值对格式
+            // 支持格式: key1=value1&key2=value2 或者每行一个键值对
+            const parsedBody: Record<string, string> = {};
+            const lines = formData.requestBody.split(/[&\n]/);
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (trimmedLine) {
+                const [key, ...valueParts] = trimmedLine.split('=');
+                if (key) {
+                  parsedBody[key.trim()] = valueParts.join('=').trim();
+                }
+              }
+            }
+            requestBody = Object.keys(parsedBody).length > 0 ? parsedBody : formData.requestBody;
+          }
+        } else {
+          // raw 或其他类型，保留原始字符串
           requestBody = formData.requestBody;
         }
       }
@@ -251,10 +287,12 @@ export function ApiCreateDialog({
         }
       }
 
-      // 提取Content-Type
-      const contentType = (requestHeaders as any)['Content-Type'] || 
-                         (requestHeaders as any)['content-type'] || 
-                         'application/json';
+      // 获取 Content-Type：优先使用请求体类型对应的 MIME，其次使用请求头中的设置
+      const contentType = formData.bodyType !== 'none' 
+        ? getMimeTypeFromBodyType(formData.bodyType)
+        : (requestHeaders as any)['Content-Type'] || 
+          (requestHeaders as any)['content-type'] || 
+          'application/json';
 
       const apiData = {
         name: formData.name,
@@ -271,6 +309,7 @@ export function ApiCreateDialog({
         platform: formData.platform,
         component: formData.component,
         feature: formData.feature,
+        subFeature: formData.subFeature?.trim() || undefined,
       };
 
       // 检查冲突
@@ -487,12 +526,13 @@ export function ApiCreateDialog({
                 />
               </div>
 
-              {/* 四层分类选择器 */}
+              {/* 四层分类选择器（包含子功能第4层） */}
               <FourLayerSelector
                 value={{
                   platform: formData.platform,
                   component: formData.component,
                   feature: formData.feature,
+                  subFeature: formData.subFeature,
                 }}
                 onChange={(classification) => {
                   setFormData({
@@ -500,10 +540,12 @@ export function ApiCreateDialog({
                     platform: classification.platform,
                     component: classification.component,
                     feature: classification.feature,
+                    subFeature: classification.subFeature || '',
                   });
                 }}
                 allowCreate={true}
                 refreshTrigger={open}
+                enableSubFeature={true}
               />
 
               <div className="space-y-2">
@@ -511,7 +553,7 @@ export function ApiCreateDialog({
                 
                 {/* 已选择的标签 */}
                 {selectedTagObjects.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2 p-2 border rounded-md bg-muted/30">
+                  <div className="flex flex-wrap gap-2 mb-2 p-2 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md bg-muted/30">
                     {selectedTagObjects.map((tag) => (
                       <Badge
                         key={tag.id}
@@ -534,7 +576,7 @@ export function ApiCreateDialog({
                 />
 
                 {/* 标签列表 */}
-                <div className="max-h-32 overflow-y-auto border rounded-md p-2">
+                <div className="max-h-32 overflow-y-auto border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-2">
                   <div className="flex flex-wrap gap-2">
                     {/* 创建/选择标签按钮 */}
                     {canShowCreateButton && (
@@ -588,17 +630,51 @@ export function ApiCreateDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="requestBody">{t('requestBody')}</Label>
-                <Textarea
-                  id="requestBody"
-                  value={formData.requestBody}
-                  onChange={(e) =>
-                    setFormData({ ...formData, requestBody: e.target.value })
-                  }
-                  placeholder={t('requestBodyPlaceholder')}
-                  rows={4}
-                  className="font-mono text-sm"
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="requestBody">{t('requestBody')}</Label>
+                  <Select
+                    value={formData.bodyType}
+                    onValueChange={(value: RequestBodyType) =>
+                      setFormData({ ...formData, bodyType: value })
+                    }
+                  >
+                    <SelectTrigger className="w-[220px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REQUEST_BODY_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.bodyType !== 'none' && (
+                  <>
+                    <Textarea
+                      id="requestBody"
+                      value={formData.requestBody}
+                      onChange={(e) =>
+                        setFormData({ ...formData, requestBody: e.target.value })
+                      }
+                      placeholder={
+                        formData.bodyType === 'json' 
+                          ? t('requestBodyPlaceholder')
+                          : formData.bodyType === 'form-data' || formData.bodyType === 'x-www-form-urlencoded'
+                            ? '{"key1": "value1", "key2": "value2"}\n或\nkey1=value1&key2=value2'
+                            : '输入原始文本内容...'
+                      }
+                      rows={4}
+                      className="font-mono text-sm"
+                    />
+                    {(formData.bodyType === 'form-data' || formData.bodyType === 'x-www-form-urlencoded') && (
+                      <p className="text-xs text-muted-foreground">
+                        支持 JSON 格式 {"{"}"key": "value"{"}"} 或 URL 编码格式 key=value&key2=value2
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="space-y-2">

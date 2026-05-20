@@ -15,14 +15,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 
+type TreeNodeType = 'platform' | 'component' | 'feature' | 'subFeature';
+
 interface TreeNode {
-  type: 'platform' | 'component' | 'feature';
+  type: TreeNodeType;
   name: string;
   count: number;
   fullPath: {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
   };
 }
 
@@ -94,6 +97,7 @@ export function EditClassificationDialog({
   const categoryType = 
     node.type === 'platform' ? t('platform') : 
     node.type === 'component' ? t('component') : 
+    // subFeature 在文案上也归类为“功能”
     t('feature');
 
   return (

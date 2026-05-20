@@ -46,6 +46,16 @@ const METHOD_COLORS: Record<string, string> = {
   PATCH: 'bg-purple-500 hover:bg-purple-600',
 };
 
+// 提取「父功能 > 子功能」路径中的最后一段名称，用于展示
+const getLeafName = (value?: string | null) => {
+  if (!value) return value;
+  const segments = value
+    .split('>')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return segments.length > 0 ? segments[segments.length - 1] : value;
+};
+
 export default function ApiRepositoryPage() {
   const { toast } = useToast();
   const t = useTranslations('apiRepository');
@@ -76,7 +86,7 @@ export default function ApiRepositoryPage() {
   const [editingApi, setEditingApi] = useState<any>(null);
   const [apiCreateDialogOpen, setApiCreateDialogOpen] = useState(false);
   const [createClassificationDialogOpen, setCreateClassificationDialogOpen] = useState(false);
-  const [createParentContext, setCreateParentContext] = useState<{platform?: string; component?: string} | undefined>(undefined);
+  const [createParentContext, setCreateParentContext] = useState<{platform?: string; component?: string; feature?: string} | undefined>(undefined);
   const [editClassificationDialogOpen, setEditClassificationDialogOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<any>(null);
   const [deleteConfirmDialogOpen, setDeleteConfirmDialogOpen] = useState(false);
@@ -90,6 +100,7 @@ export default function ApiRepositoryPage() {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
     isStarred?: boolean;
   }>({});
 
@@ -173,6 +184,9 @@ export default function ApiRepositoryPage() {
       }
       if (fourLayerFilter.feature) {
         params.append('feature', fourLayerFilter.feature);
+      }
+      if (fourLayerFilter.subFeature) {
+        params.append('subFeature', fourLayerFilter.subFeature);
       }
       if (fourLayerFilter.isStarred) {
         params.append('isStarred', 'true');
@@ -359,6 +373,7 @@ export default function ApiRepositoryPage() {
       const result = await response.json();
       if (result.success) {
         fetchApis();
+        fetchAllApis(); // 更新左侧树数据，使收藏统计正确
         toast({
           title: api.isStarred ? t('unstarred') : t('starred'),
         });
@@ -448,9 +463,9 @@ export default function ApiRepositoryPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
+    <div className="flex h-full min-h-0">
       {/* 左侧四层分类树 */}
-      <div className="w-64 flex-shrink-0">
+      <div className="w-72 flex-shrink-0 min-h-0">
         <FourLayerTree
           apis={allApis}
           classifications={classifications}
@@ -462,6 +477,8 @@ export default function ApiRepositoryPage() {
               setCreateParentContext({
                 platform: node.fullPath.platform,
                 component: node.fullPath.component,
+                // 如果是功能层或更深层，记录当前功能路径，后续在对话框中用于生成“父功能 > 子功能”
+                feature: node.fullPath.feature,
               });
             } else {
               // 如果是顶部的+按钮，清空父级上下文（创建平台）
@@ -475,95 +492,88 @@ export default function ApiRepositoryPage() {
       </div>
 
       {/* 右侧内容区 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* 顶部工具栏 */}
-        <div className="p-6 border-b bg-background space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-muted-foreground">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* 顶部工具栏：单行布局，左侧统计+搜索，右侧操作按钮分组 */}
+        <div className="p-4 border-b border-[#e5e7eb] dark:border-[#4b5563] bg-background">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* 左侧：统计与搜索 */}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
                 {t('totalApis')} {pagination.total} {t('apis')}
+              </span>
+              {selectedApiIds.size > 0 && (
+                <span className="text-sm text-primary font-medium whitespace-nowrap">
+                  已选 {selectedApiIds.size} 个
+                </span>
+              )}
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder={t('searchPlaceholder')}
+                  className="pl-9 h-9"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                />
               </div>
-              {selectedApiIds.size > 0 && (
-                <div className="text-sm text-primary font-medium">
-                  已选择 {selectedApiIds.size} 个API
-                </div>
-              )}
+              <Select value={methodFilter} onValueChange={setMethodFilter}>
+                <SelectTrigger className="w-[130px] h-9">
+                  <SelectValue placeholder={t('methodFilter')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">{t('allMethods')}</SelectItem>
+                  <SelectItem value="GET">GET</SelectItem>
+                  <SelectItem value="POST">POST</SelectItem>
+                  <SelectItem value="PUT">PUT</SelectItem>
+                  <SelectItem value="DELETE">DELETE</SelectItem>
+                  <SelectItem value="PATCH">PATCH</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleSearch} size="sm" variant="secondary" className="h-9 shrink-0">
+                <Filter className="mr-1.5 h-4 w-4" />
+                {t('search')}
+              </Button>
             </div>
-            <div className="flex items-center gap-2">
-              {selectedApiIds.size > 0 && (
-                <Button 
-                  onClick={handleBatchDelete} 
-                  variant="destructive" 
-                  size="sm"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  删除选中
+
+            {/* 右侧：操作按钮（批量操作 | 主操作） */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 border-r border-[#e5e7eb] dark:border-[#4b5563] pr-2">
+                <Button onClick={handleSelectAll} variant="outline" size="sm" className="h-9">
+                  {selectedApiIds.size === apis.length && apis.length > 0 ? (
+                    <>
+                      <CheckSquare className="mr-1.5 h-4 w-4" />
+                      取消全选
+                    </>
+                  ) : (
+                    <>
+                      <Square className="mr-1.5 h-4 w-4" />
+                      全选
+                    </>
+                  )}
                 </Button>
-              )}
-              <Button 
-                onClick={handleSelectAll} 
-                variant="outline" 
-                size="sm"
-              >
-                {selectedApiIds.size === apis.length && apis.length > 0 ? (
-                  <>
-                    <CheckSquare className="mr-2 h-4 w-4" />
-                    取消全选
-                  </>
-                ) : (
-                  <>
-                    <Square className="mr-2 h-4 w-4" />
-                    全选
-                  </>
+                {selectedApiIds.size > 0 && (
+                  <Button onClick={handleBatchDelete} variant="destructive" size="sm" className="h-9">
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    删除选中
+                  </Button>
                 )}
-              </Button>
-              <Button onClick={() => setApiCreateDialogOpen(true)} size="sm">
-                <Plus className="mr-2 h-4 w-4" />
-                {t('createApi')}
-              </Button>
-              <Button onClick={refreshAll} variant="outline" size="sm">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                {t('refresh')}
-              </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button onClick={() => setApiCreateDialogOpen(true)} size="sm" className="h-9">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  {t('createApi')}
+                </Button>
+                <Button onClick={refreshAll} variant="outline" size="sm" className="h-9">
+                  <RefreshCw className="mr-1.5 h-4 w-4" />
+                  {t('refresh')}
+                </Button>
+              </div>
             </div>
-          </div>
-
-          {/* 搜索和筛选 */}
-          <div className="flex items-center gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t('searchPlaceholder')}
-                className="pl-9"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              />
-            </div>
-            
-            <Select value={methodFilter} onValueChange={setMethodFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={t('methodFilter')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">{t('allMethods')}</SelectItem>
-                <SelectItem value="GET">GET</SelectItem>
-                <SelectItem value="POST">POST</SelectItem>
-                <SelectItem value="PUT">PUT</SelectItem>
-                <SelectItem value="DELETE">DELETE</SelectItem>
-                <SelectItem value="PATCH">PATCH</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button onClick={handleSearch}>
-              <Filter className="mr-2 h-4 w-4" />
-              {t('search')}
-            </Button>
           </div>
         </div>
 
         {/* API列表 */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <p className="text-muted-foreground">{tCommon('loading')}</p>
@@ -645,7 +655,7 @@ export default function ApiRepositoryPage() {
                                   <>
                                     {(api.platform || api.component) && <span className="text-muted-foreground">/</span>}
                                     <Badge variant="outline" className="text-xs">
-                                      {api.feature}
+                                      {getLeafName(api.feature)}
                                     </Badge>
                                   </>
                                 )}
@@ -679,6 +689,16 @@ export default function ApiRepositoryPage() {
                                 <span className="text-xs text-muted-foreground">
                                   +{api.tags.length - 3}
                                 </span>
+                              )}
+                            </div>
+                          )}
+                          {(api.createdByUser || api.updatedByUser) && (
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              {api.createdByUser && (
+                                <span>{tCommon('createdBy')}: {api.createdByUser.loginName}</span>
+                              )}
+                              {api.updatedByUser && (
+                                <span>{tCommon('updatedBy')}: {api.updatedByUser.username || api.updatedByUser.loginName}</span>
                               )}
                             </div>
                           )}
@@ -737,7 +757,7 @@ export default function ApiRepositoryPage() {
 
         {/* 分页 */}
         {apis.length > 0 && (
-          <div className="p-6 border-t bg-background">
+          <div className="p-6 border-t border-[#e5e7eb] dark:border-[#4b5563] bg-background">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {t('pageInfo')} {pagination.page} {t('pageOf')} {pagination.totalPages} {t('totalPages')}

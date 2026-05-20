@@ -1,6 +1,6 @@
 # 🗂️ API 仓库管理指南
 
-> **API 仓库**是 AI TestMind 的核心数据中心，所有采集和手动创建的 API 都存储在这里，供后续测试编排和 AI 生成使用。
+> **API 仓库**是 API 智能测试平台 的核心数据中心，所有采集和手动创建的 API 都存储在这里，供后续测试编排和 AI 生成使用。
 
 ---
 
@@ -320,7 +320,7 @@ API 仓库是一个集中管理所有 API 接口的地方，包括：
 
 ### 分类层级
 
-AI TestMind 使用三层分类结构：
+API 智能测试平台 使用三层分类结构：
 
 ```
 平台（Platform）
@@ -394,7 +394,7 @@ AI TestMind 使用三层分类结构：
 
 **支持的格式：**
 - 📦 **HAR 文件**: Chrome/Firefox/Postman 导出的 HAR
-- 📄 **JSON 文件**: AI TestMind 标准格式
+- 📄 **JSON 文件**: API 智能测试平台 标准格式
 - 📋 **Postman Collection**: Postman 导出的 Collection
 - 🌐 **OpenAPI/Swagger**: OpenAPI 3.0 / Swagger 2.0 规范
 

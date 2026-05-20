@@ -18,43 +18,43 @@
   --letter-spacing: 0em;
   --spacing: 0.25rem;
   
-  /* Colors - Default theme */
-  --background: hsl(300 50% 100%);
-  --foreground: hsl(240.1022 11.2443% 3.9839%);
-  --card: hsl(300 50% 100%);
-  --card-foreground: hsl(240.1022 11.2443% 3.9839%);
-  --popover: hsl(300 50% 100%);
-  --popover-foreground: hsl(240.1022 11.2443% 3.9839%);
-  --primary: hsl(216.8916 105.653% 59.6083%);
-  --primary-foreground: hsl(213.7504 96.4849% 96.7906%);
-  --secondary: hsl(239.9923 3.51% 95.7864%);
-  --secondary-foreground: hsl(240.0173 6.0307% 9.9812%);
-  --muted: hsl(239.9923 3.51% 95.7864%);
-  --muted-foreground: hsl(240.0969 4.4107% 46.3367%);
-  --accent: hsl(239.9923 3.51% 95.7864%);
-  --accent-foreground: hsl(240.0173 6.0307% 9.9812%);
+  /* Colors - Emerald Forest theme */
+  --background: hsl(150 30% 98%);
+  --foreground: hsl(160 40% 10%);
+  --card: hsl(150 30% 100%);
+  --card-foreground: hsl(160 40% 10%);
+  --popover: hsl(150 30% 100%);
+  --popover-foreground: hsl(160 40% 10%);
+  --primary: hsl(160 84% 39%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(150 40% 95%);
+  --secondary-foreground: hsl(160 50% 18%);
+  --muted: hsl(150 25% 94%);
+  --muted-foreground: hsl(160 15% 45%);
+  --accent: hsl(150 50% 94%);
+  --accent-foreground: hsl(160 60% 20%);
   --destructive: hsl(351.7303 123.6748% 40.5257%);
-  --destructive-foreground: hsl(300 50% 100%);
-  --border: hsl(239.999 5.8553% 90.0314%);
-  --input: hsl(239.999 5.8553% 90.0314%);
-  --ring: hsl(216.8916 105.653% 59.6083%);
+  --destructive-foreground: hsl(150 30% 100%);
+  --border: hsl(150 20% 88%);
+  --input: hsl(150 20% 88%);
+  --ring: hsl(160 84% 39%);
   
-  /* Charts */
-  --chart-1: hsl(23.8137 138.2925% 40.3162%);
-  --chart-2: hsl(175.8622 177.4258% 21.2406%);
-  --chart-3: hsl(195.8236 72.1388% 22.8735%);
-  --chart-4: hsl(46.6817 159.6638% 38.5235%);
-  --chart-5: hsl(40.5818 156.0053% 38.8379%);
+  /* Charts - Emerald Forest theme */
+  --chart-1: hsl(160 84% 39%);
+  --chart-2: hsl(150 70% 45%);
+  --chart-3: hsl(170 75% 35%);
+  --chart-4: hsl(140 80% 42%);
+  --chart-5: hsl(155 85% 38%);
   
-  /* Sidebar */
-  --sidebar: hsl(300 0% 98.0256%);
-  --sidebar-foreground: hsl(240.1022 11.2443% 3.9839%);
-  --sidebar-primary: hsl(216.8916 105.653% 59.6083%);
-  --sidebar-primary-foreground: hsl(213.7504 96.4849% 96.7906%);
-  --sidebar-accent: hsl(239.9923 3.51% 95.7864%);
-  --sidebar-accent-foreground: hsl(240.0173 6.0307% 9.9812%);
-  --sidebar-border: hsl(239.999 5.8553% 90.0314%);
-  --sidebar-ring: hsl(216.8916 105.653% 59.6083%);
+  /* Sidebar - Emerald Forest theme */
+  --sidebar: hsl(150 20% 97%);
+  --sidebar-foreground: hsl(160 40% 10%);
+  --sidebar-primary: hsl(160 84% 39%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(150 40% 94%);
+  --sidebar-accent-foreground: hsl(160 60% 20%);
+  --sidebar-border: hsl(150 20% 90%);
+  --sidebar-ring: hsl(160 84% 39%);
   
   /* Shadow calculations */
   --shadow-color: hsl(0 0% 0%);
@@ -147,4 +147,13 @@ body {
 
 *::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+}
+
+/* 隐藏滚动条但保留滚动功能 */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

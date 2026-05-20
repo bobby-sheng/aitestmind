@@ -42,7 +42,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (pathname === '/users' && user.role !== 'admin') {
         setIsChecking(false)
         setIsAuthenticated(false)
-        router.push('/api-capture')
+        router.push('/dashboard')
         return
       }
 

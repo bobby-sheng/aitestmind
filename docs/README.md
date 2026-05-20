@@ -1,4 +1,4 @@
-# 📖 AI TestMind 文档中心 / Documentation Center
+# 📖 API 智能测试平台 文档中心 / Documentation Center
 
 [English](#english-documentation) | [中文](#中文文档)
 
@@ -90,7 +90,7 @@
 - [API Capture](screenshots/api-capture-en.png)
 
 #### 🖼️ 品牌资源
-- [Logo SVG](images/logo.svg) - AI TestMind Logo
+- [Logo SVG](images/logo.svg) - API 智能测试平台 Logo
 - [微信群二维码](images/wecaht-qr.png)
 - [飞书群二维码](images/feishu-qr.png)
 
@@ -221,7 +221,7 @@
 - [API Capture](screenshots/api-capture-en.png)
 
 #### 🖼️ Brand Assets
-- [Logo SVG](images/logo.svg) - AI TestMind Logo
+- [Logo SVG](images/logo.svg) - API 智能测试平台 Logo
 - [WeChat QR Code](images/wecaht-qr.png)
 - [Feishu QR Code](images/feishu-qr.png)
 

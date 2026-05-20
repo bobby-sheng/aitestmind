@@ -41,6 +41,7 @@ interface FlowCanvasProps {
   onNodesChange?: (nodes: Node[]) => void;
   onEdgesChange?: (edges: Edge[]) => void;
   onNodeDrop?: (nodeType: string, position: { x: number; y: number }, targetNodeId?: string) => void;
+  onNodeDelete?: (nodeId: string) => void;  // 节点删除回调
   selectedNodeId?: string | null;
 }
 
@@ -53,6 +54,7 @@ export default function FlowCanvas({
   onNodesChange,
   onEdgesChange,
   onNodeDrop,
+  onNodeDelete,
   selectedNodeId,
 }: FlowCanvasProps) {
   const [nodes, setNodes, handleNodesChange] = useNodesState(initialNodes as Node[]);
@@ -83,6 +85,23 @@ export default function FlowCanvas({
       document.removeEventListener('node-config', handleNodeConfigEvent);
     };
   }, [onNodeConfig]);
+
+  // 监听节点删除自定义事件
+  useEffect(() => {
+    const handleNodeDeleteEvent = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const nodeId = customEvent.detail?.nodeId;
+      console.log('🗑️ Received node-delete event:', nodeId);
+      if (nodeId && onNodeDelete) {
+        onNodeDelete(nodeId);
+      }
+    };
+
+    document.addEventListener('node-delete', handleNodeDeleteEvent);
+    return () => {
+      document.removeEventListener('node-delete', handleNodeDeleteEvent);
+    };
+  }, [onNodeDelete]);
 
   // 同步外部nodes更新（但避免回流导致的重复同步）
   useEffect(() => {
@@ -167,7 +186,13 @@ export default function FlowCanvas({
     
     if (edgesChanged) {
       console.log('外部连线变化，完全同步:', initialEdges);
-      setEdges(initialEdges as Edge[]);
+      // 确保所有边都设置为可删除和可选择
+      const edgesWithDeletable = (initialEdges as Edge[]).map(edge => ({
+        ...edge,
+        deletable: true,
+        selectable: true,
+      }));
+      setEdges(edgesWithDeletable);
       prevInitialEdgesRef.current = initialEdges;
     }
   }, [initialEdges, setEdges]);
@@ -184,7 +209,14 @@ export default function FlowCanvas({
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge(connection, eds));
+      setEdges((eds) => {
+        const newEdge = addEdge({ 
+          ...connection, 
+          deletable: true,
+          selectable: true,
+        }, eds);
+        return newEdge;
+      });
     },
     [setEdges]
   );
@@ -229,6 +261,12 @@ export default function FlowCanvas({
   // 监听边变化并通知父组件
   const onEdgesChangeInternal = useCallback(
     (changes: any) => {
+      // 检查是否有删除操作
+      const hasRemove = changes.some((change: any) => change.type === 'remove');
+      if (hasRemove) {
+        console.log('检测到连线删除操作:', changes);
+      }
+      // 应用变更到内部状态（包括删除操作）
       handleEdgesChange(changes);
     },
     [handleEdgesChange]
@@ -240,12 +278,28 @@ export default function FlowCanvas({
     const hasChanged = JSON.stringify(prevEdgesRef.current) !== JSON.stringify(edges);
     
     if (hasChanged && onEdgesChange) {
-      console.log('Syncing edges to parent:', edges);
+      console.log('同步连线到父组件:', edges.length, '条连线');
       isInternalUpdate.current = true; // 标记为内部更新，避免回流
-      onEdgesChange(edges);
+      // 确保所有边都设置为可删除和可选择
+      const edgesWithDeletable = edges.map(edge => ({
+        ...edge,
+        deletable: true,
+        selectable: true,
+      }));
+      onEdgesChange(edgesWithDeletable);
       prevEdgesRef.current = edges;
     }
   }, [edges, onEdgesChange]);
+
+  // 处理边删除
+  const onEdgesDelete = useCallback(
+    (deletedEdges: Edge[]) => {
+      console.log('删除连线:', deletedEdges);
+      // 删除操作已经通过 onEdgesChange 处理，这里可以添加额外的逻辑
+      // 比如显示提示信息等
+    },
+    []
+  );
 
   // 处理拖放
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -334,11 +388,13 @@ export default function FlowCanvas({
         edges={edges}
         onNodesChange={onNodesChangeInternal}
         onEdgesChange={onEdgesChangeInternal}
+        onEdgesDelete={onEdgesDelete}
         onConnect={onConnect}
         onNodeClick={handleNodeClickInternal}
         onPaneClick={handlePaneClickInternal}
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
+        deleteKeyCode="Delete"
         fitView
         className="bg-background"
       >

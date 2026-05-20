@@ -47,7 +47,7 @@ export function StreamingAIMessage({ blocks, createdAt }: StreamingAIMessageProp
   return (
     <div className="flex gap-4 justify-start">
       {/* AI 头像 */}
-      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
+      <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-md">
         <Sparkles className="w-5 h-5 text-primary-foreground" />
       </div>
 
@@ -113,7 +113,7 @@ export function StreamingAIMessage({ blocks, createdAt }: StreamingAIMessageProp
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-lg">⚠️</span>
-                      <p className="text-sm font-medium text-destructive">
+                      <p className="text-base font-medium text-destructive">
                         {block.content}
                       </p>
                     </div>

@@ -66,8 +66,9 @@ export function hasCircularDependency(nodes: Node[], edges: Edge[]): boolean {
     inDegree.set(node.id, 0);
   });
 
-  // 构建图和入度
+  // 构建图和入度（跳过 source 或 target 不存在的无效边）
   edges.forEach(edge => {
+    if (!adjacencyMap.has(edge.source) || !inDegree.has(edge.target)) return;
     adjacencyMap.get(edge.source)!.push(edge.target);
     inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
   });

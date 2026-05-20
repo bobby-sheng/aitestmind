@@ -1,0 +1,77 @@
+
+sequenceDiagram
+    participant User as 用户
+    participant Frontend as 前端页面<br/>(TestSuitesPage)
+    participant NextAPI as Next.js API<br/>(/api/test-suites/[id]/execute)
+    participant DB as 数据库<br/>(Prisma)
+    participant Executor as Python执行器<br/>(FastAPI)
+    participant SuiteExecutor as SuiteExecutor
+    participant TestExecutor as TestExecutor
+    participant API as 目标API
+
+    User->>Frontend: 点击执行测试套件
+    Frontend->>NextAPI: POST /api/test-suites/{id}/execute
+    
+    NextAPI->>DB: 查询测试套件信息
+    DB-->>NextAPI: 返回测试套件及用例列表
+    
+    NextAPI->>DB: 获取环境配置<br/>(全局/套件配置)
+    DB-->>NextAPI: 返回环境配置
+    
+    NextAPI->>DB: 创建 TestSuiteExecution 记录<br/>(status: pending)
+    DB-->>NextAPI: 返回 executionId
+    
+    NextAPI->>Executor: POST /api/execute-suite<br/>(suite_execution_id, suite_id, environment_config)
+    NextAPI-->>Frontend: 返回执行ID和基本信息
+    
+    Frontend->>Frontend: 显示执行已启动提示
+    
+    Executor->>SuiteExecutor: execute_suite()
+    
+    SuiteExecutor->>DB: 获取测试套件执行记录
+    SuiteExecutor->>DB: 获取测试用例列表<br/>(按order排序)
+    
+    loop 遍历每个测试用例
+        SuiteExecutor->>DB: 创建 TestCaseExecution 记录<br/>(status: pending)
+        DB-->>SuiteExecutor: 返回 case_execution_id
+        
+        SuiteExecutor->>TestExecutor: execute_test_case()<br/>(传入 case_execution_id)
+        
+        TestExecutor->>TestExecutor: 初始化变量管理器<br/>断言引擎、等待处理器
+        
+        loop 遍历每个节点
+            TestExecutor->>DB: 创建 StepExecution 记录<br/>(status: pending)
+            
+            alt 节点类型: API请求
+                TestExecutor->>TestExecutor: 解析变量、构建请求
+                TestExecutor->>API: 发送HTTP请求
+                API-->>TestExecutor: 返回响应
+                TestExecutor->>TestExecutor: 执行断言
+                TestExecutor->>TestExecutor: 提取变量
+            else 节点类型: 等待
+                TestExecutor->>TestExecutor: 执行等待逻辑
+            else 节点类型: 条件判断
+                TestExecutor->>TestExecutor: 执行条件判断
+            end
+            
+            TestExecutor->>DB: 更新 StepExecution 记录<br/>(status, response, logs)
+            
+            alt 节点执行失败
+                TestExecutor->>TestExecutor: 标记失败，停止执行
+            end
+        end
+        
+        TestExecutor->>DB: 更新 TestCaseExecution 记录<br/>(status: passed/failed)
+        TestExecutor-->>SuiteExecutor: 返回执行结果
+        
+        SuiteExecutor->>DB: 更新统计信息<br/>(passedCases, failedCases)
+    end
+    
+    SuiteExecutor->>DB: 更新 TestSuiteExecution 记录<br/>(status: completed/failed)
+    SuiteExecutor-->>Executor: 返回执行结果
+    
+    Note over Frontend,DB: 前端通过SSE轮询获取执行状态
+    Frontend->>NextAPI: GET /api/executions/suite/{executionId}/stream
+    NextAPI->>DB: 轮询查询执行状态<br/>(每500ms)
+    DB-->>NextAPI: 返回最新执行状态
+    NextAPI-->>Frontend: SSE推送状态更新

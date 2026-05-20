@@ -35,6 +35,8 @@ interface CreateClassificationDialogProps {
   parentContext?: {
     platform?: string;
     component?: string;
+    // 功能名称（用于在功能层下继续新增“子功能”）
+    feature?: string;
   };
 }
 
@@ -46,12 +48,23 @@ export function CreateClassificationDialog({
   parentContext,
 }: CreateClassificationDialogProps) {
   const t = useTranslations('apiRepository.createClassification');
-  
+
+  const isSubFeatureMode = !!parentContext?.feature;
   // 根据 parentContext 自动确定层级
   const getDefaultLevel = () => {
     if (!parentContext) return 'platform';
-    if (parentContext.component) return 'feature';
-    if (parentContext.platform) return 'component';
+    // 平台下创建 => 组件
+    if (parentContext.platform && !parentContext.component && !parentContext.feature) {
+      return 'component';
+    }
+    // 组件下创建 => 功能
+    if (parentContext.platform && parentContext.component && !parentContext.feature) {
+      return 'feature';
+    }
+    // 功能下创建 => 子功能（仍然使用 feature 字段存储）
+    if (parentContext.platform && parentContext.component && parentContext.feature) {
+      return 'feature';
+    }
     return 'platform';
   };
   
@@ -66,7 +79,13 @@ export function CreateClassificationDialog({
   useEffect(() => {
     if (open) {
       // 根据 parentContext 设置正确的 level
-      if (parentContext?.component) {
+      if (parentContext?.component && parentContext?.feature) {
+        // 功能层下点击 + ，在该功能下继续创建“子功能”
+        setLevel('feature');
+        setPlatform(parentContext.platform || '');
+        setComponent(parentContext.component || '');
+      } else if (parentContext?.component) {
+        // 组件层下点击 + ，创建新的功能
         setLevel('feature');
         setPlatform(parentContext.platform || '');
         setComponent(parentContext.component);
@@ -90,11 +109,22 @@ export function CreateClassificationDialog({
     setIsSubmitting(true);
     try {
       // 构建保存的数据
+      // 功能层下点击 + 时，使用“父功能 > 子功能”的形式编码到 feature 字段
+      let computedFeature: string | undefined = undefined;
+      if (level === 'feature') {
+        if (parentContext?.feature) {
+          // 父功能存在：在父功能下继续追加子功能
+          computedFeature = `${parentContext.feature} > ${newName}`;
+        } else {
+          computedFeature = newName;
+        }
+      }
+
       const classificationData = {
         level,
         platform: level === 'platform' ? newName : platform,
         component: level === 'component' ? newName : component || undefined,
-        feature: level === 'feature' ? newName : undefined,
+        feature: computedFeature,
       };
 
       // 这里只需要保存分类结构，不需要创建实际的 API
@@ -136,6 +166,7 @@ export function CreateClassificationDialog({
   // 根据上下文动态设置标题
   const getDialogTitle = () => {
     if (!parentContext) return t('title'); // "创建分类"
+    if (parentContext.feature) return t('addSubFeature'); // "添加子功能"
     if (parentContext.component) return t('addFeature'); // "添加功能"
     if (parentContext.platform) return t('addComponent'); // "添加组件"
     return t('title');
@@ -146,7 +177,9 @@ export function CreateClassificationDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{getDialogTitle()}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
+          <DialogDescription>
+            {isSubFeatureMode ? t('descriptionSubFeature') : t('description')}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -161,6 +194,12 @@ export function CreateClassificationDialog({
                     <>
                       {' > '}
                       {t('component')}: <span className="font-medium text-foreground">{parentContext.component}</span>
+                    </>
+                  )}
+                  {parentContext.feature && (
+                    <>
+                      {' > '}
+                      {t('feature')}: <span className="font-medium text-foreground">{parentContext.feature}</span>
                     </>
                   )}
                 </div>
@@ -236,7 +275,9 @@ export function CreateClassificationDialog({
                 ? t('platformName')
                 : level === 'component'
                 ? t('componentName')
-                : t('featureName')}
+                : isSubFeatureMode
+                  ? t('subFeatureName')
+                  : t('featureName')}
             </Label>
             <Input
               value={newName}
@@ -246,7 +287,9 @@ export function CreateClassificationDialog({
                   ? t('platformNamePlaceholder')
                   : level === 'component'
                   ? t('componentNamePlaceholder')
-                  : t('featureNamePlaceholder')
+                  : isSubFeatureMode
+                    ? t('subFeatureNamePlaceholder')
+                    : t('featureNamePlaceholder')
               }
             />
           </div>

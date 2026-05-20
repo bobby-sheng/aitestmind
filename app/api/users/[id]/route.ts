@@ -6,10 +6,17 @@ import { logger, OperationType } from '@/lib/logger';
 // 获取单个用户
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  const { id } = params;
+  const { id } = await params;
+
+  if (!id || id === 'undefined') {
+    return NextResponse.json(
+      { error: '用户 ID 不能为空' },
+      { status: 400 }
+    );
+  }
   
   try {
     logger.apiRequest('GET', `/api/users/${id}`, OperationType.READ);
@@ -31,7 +38,7 @@ export async function GET(
     if (result.user.id !== id && result.user.role !== 'admin') {
       const duration = Date.now() - startTime;
       logger.apiResponse('GET', `/api/users/${id}`, OperationType.READ, 403, duration);
-      logger.warn(OperationType.AUTH, `非授权用户尝试查询他人信息: ${result.user.username} -> ${id}`);
+      logger.warn(OperationType.AUTH, `非授权用户尝试查询他人信息: ${result.user.loginName} -> ${id}`);
       
       return NextResponse.json(
         { error: '权限不足' },
@@ -44,9 +51,9 @@ export async function GET(
       where: { id },
       select: {
         id: true,
+        loginName: true,
         username: true,
         email: true,
-        realName: true,
         role: true,
         status: true,
         createdAt: true,
@@ -68,7 +75,7 @@ export async function GET(
 
     const duration = Date.now() - startTime;
     logger.apiResponse('GET', `/api/users/${id}`, OperationType.READ, 200, duration);
-    logger.success(OperationType.READ, `查询用户详情成功: ${user.username}`);
+    logger.success(OperationType.READ, `查询用户详情成功: ${user.loginName}`);
 
     return NextResponse.json({ user });
   } catch (error) {
@@ -86,10 +93,17 @@ export async function GET(
 // 更新用户
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  const { id } = params;
+  const { id } = await params;
+
+  if (!id || id === 'undefined') {
+    return NextResponse.json(
+      { error: '用户 ID 不能为空' },
+      { status: 400 }
+    );
+  }
   
   try {
     const result = await getCurrentUser(request);
@@ -106,15 +120,15 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { username, password, email, realName, role, status } = body;
+    const { loginName, password, email, username, role, status } = body;
     
-    logger.apiRequest('PUT', `/api/users/${id}`, OperationType.UPDATE, { username, email, role });
+    logger.apiRequest('PUT', `/api/users/${id}`, OperationType.UPDATE, { loginName, email, role });
 
     // 只能修改自己的信息，或者管理员可以修改所有人
     if (result.user.id !== id && result.user.role !== 'admin') {
       const duration = Date.now() - startTime;
       logger.apiResponse('PUT', `/api/users/${id}`, OperationType.UPDATE, 403, duration);
-      logger.warn(OperationType.AUTH, `非授权用户尝试更新他人信息: ${result.user.username} -> ${id}`);
+      logger.warn(OperationType.AUTH, `非授权用户尝试更新他人信息: ${result.user.loginName} -> ${id}`);
       
       return NextResponse.json(
         { error: '权限不足' },
@@ -141,25 +155,25 @@ export async function PUT(
 
     const updateData: any = {};
 
-    // 如果修改用户名，检查是否重复
-    if (username && username !== existingUser.username) {
-      logger.db(OperationType.READ, 'User', 'findUnique', { username });
-      const duplicateUsername = await prisma.user.findUnique({
-        where: { username },
+    // 如果修改登录名，检查是否重复
+    if (loginName && loginName !== existingUser.loginName) {
+      logger.db(OperationType.READ, 'User', 'findUnique', { loginName });
+      const duplicateLoginName = await prisma.user.findUnique({
+        where: { loginName },
       });
 
-      if (duplicateUsername) {
+      if (duplicateLoginName) {
         const duration = Date.now() - startTime;
         logger.apiResponse('PUT', `/api/users/${id}`, OperationType.UPDATE, 409, duration);
-        logger.warn(OperationType.UPDATE, `更新失败: 用户名已存在 - ${username}`);
+        logger.warn(OperationType.UPDATE, `更新失败: 登录名已存在 - ${loginName}`);
         
         return NextResponse.json(
-          { error: '用户名已存在' },
+          { error: '登录名已存在' },
           { status: 409 }
         );
       }
 
-      updateData.username = username;
+      updateData.loginName = loginName;
     }
 
     // 如果修改密码
@@ -199,6 +213,11 @@ export async function PUT(
       updateData.email = email || null;
     }
 
+    // 用户名（显示名）
+    if (username !== undefined) {
+      updateData.username = username || null;
+    }
+
     // 普通用户不能修改角色和状态
     if (result.user.role === 'admin') {
       if (role !== undefined) {
@@ -209,10 +228,6 @@ export async function PUT(
       }
     }
 
-    if (realName !== undefined) {
-      updateData.realName = realName || null;
-    }
-
     // 更新用户
     logger.db(OperationType.UPDATE, 'User', 'update', { id, updateData });
     const user = await prisma.user.update({
@@ -220,9 +235,9 @@ export async function PUT(
       data: updateData,
       select: {
         id: true,
+        loginName: true,
         username: true,
         email: true,
-        realName: true,
         role: true,
         status: true,
         createdAt: true,
@@ -233,8 +248,8 @@ export async function PUT(
 
     const duration = Date.now() - startTime;
     logger.apiResponse('PUT', `/api/users/${id}`, OperationType.UPDATE, 200, duration);
-    logger.success(OperationType.UPDATE, `更新用户成功: ${user.username}`, {
-      updatedBy: result.user.username,
+    logger.success(OperationType.UPDATE, `更新用户成功: ${user.loginName}`, {
+      updatedBy: result.user.loginName,
       fields: Object.keys(updateData)
     });
 
@@ -257,10 +272,17 @@ export async function PUT(
 // 删除用户
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  const { id } = params;
+  const { id } = await params;
+
+  if (!id || id === 'undefined') {
+    return NextResponse.json(
+      { error: '用户 ID 不能为空' },
+      { status: 400 }
+    );
+  }
   
   try {
     logger.apiRequest('DELETE', `/api/users/${id}`, OperationType.DELETE);
@@ -282,7 +304,7 @@ export async function DELETE(
     if (result.user.role !== 'admin') {
       const duration = Date.now() - startTime;
       logger.apiResponse('DELETE', `/api/users/${id}`, OperationType.DELETE, 403, duration);
-      logger.warn(OperationType.AUTH, `非管理员尝试删除用户: ${result.user.username}`);
+      logger.warn(OperationType.AUTH, `非管理员尝试删除用户: ${result.user.loginName}`);
       
       return NextResponse.json(
         { error: '权限不足' },
@@ -332,8 +354,8 @@ export async function DELETE(
 
     const duration = Date.now() - startTime;
     logger.apiResponse('DELETE', `/api/users/${id}`, OperationType.DELETE, 200, duration);
-    logger.success(OperationType.DELETE, `删除用户成功: ${user.username}`, {
-      deletedBy: result.user.username
+    logger.success(OperationType.DELETE, `删除用户成功: ${user.loginName}`, {
+      deletedBy: result.user.loginName
     });
 
     return NextResponse.json({

@@ -28,7 +28,7 @@ model Api {
   platform    String? // 平台名称（第1层）
   component   String? // 组件名称（第2层）
   feature     String? // 功能名称（第3层）
-  // API动作本身是第4层
+  subFeature  String? // 子功能名称（第4层）
   
   // 分类和标签（保留原有的简单分类，用于向后兼容）
   categoryId String?
@@ -67,13 +67,25 @@ model Api {
   isStarred Boolean @default(false) // 是否收藏
   isArchived Boolean @default(false) // 是否归档
 
+  // 关联到测试步骤（反向关系）
+  testSteps TestStep[]
+
+  // 创建人/更新人
+  createdBy String?
+  updatedBy String?
+  createdByUser User? @relation("ApiCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("ApiUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
   @@index([categoryId])
+  @@index([createdBy])
+  @@index([updatedBy])
   @@index([method])
   @@index([domain])
   @@index([createdAt])
   @@index([platform])
   @@index([component])
   @@index([feature])
+  @@index([subFeature])
   @@index([importSource])
 }
 
@@ -153,6 +165,10 @@ model TestCase {
   
   // 状态
   status String @default("draft") // draft, active, archived
+
+  // 用例级别/优先级（方案A：挂在 TestCase 上）
+  // P0(核心) / P1(高) / P2(中) / P3(低)
+  priority String @default("P2")
   
   // 分类和标签
   category String? // 分类名称
@@ -171,10 +187,19 @@ model TestCase {
   executeCount Int @default(0) // 执行次数
   successCount Int @default(0) // 成功次数
   failCount    Int @default(0) // 失败次数
+
+  // 创建人/更新人
+  createdBy String?
+  updatedBy String?
+  createdByUser User? @relation("TestCaseCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("TestCaseUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   
   @@index([status])
+  @@index([priority])
   @@index([category])
   @@index([createdAt])
+  @@index([createdBy])
+  @@index([updatedBy])
 }
 
 // 测试步骤模型
@@ -195,6 +220,7 @@ model TestStep {
   
   // 关联的API
   apiId String?
+  api   Api? @relation(fields: [apiId], references: [id])
   
   // 步骤类型
   type String // api, wait, assertion等
@@ -224,6 +250,14 @@ model PlatformSettings {
   authTokenEnabled Boolean @default(false) // 是否启用认证Token
   authTokenKey     String? // Token的Header键名（如：Authorization）
   authTokenValue   String? // Token的值（如：Bearer xxx）
+
+  // Token 自动获取配置
+  tokenLoginApiUrl         String?   // Token登录接口URL
+  tokenLoginMethod         String?   // 请求方法（GET, POST, PUT）
+  tokenLoginRequestHeaders Json?     // 登录请求头（JSON）
+  tokenLoginRequestBody    Json?     // 登录请求体（JSON）
+  tokenResponsePath        String?   // Token在响应体中的提取路径，如 data.token
+  tokenUpdatedAt           DateTime? // Token最后自动获取时间
   
   // Session模式
   sessionEnabled       Boolean @default(false) // 是否启用Session模式
@@ -302,12 +336,21 @@ model TestSuite {
   successCount Int @default(0)
   failCount    Int @default(0)
   
+  // 运行模式
+  runMode String @default("serial") // serial: 串行, parallel: 并行
+  
   // 调度配置
   executionMode     String    @default("manual") // manual: 手动执行, scheduled: 定时执行
   scheduleConfig    String? // JSON格式的调度配置
   scheduleStatus    String? // active: 激活, paused: 暂停, disabled: 禁用
   nextRunTime       DateTime? // 下次执行时间（由调度器计算）
   lastScheduledRun  DateTime? // 上次调度执行时间
+
+  // 创建人/更新人
+  createdBy String?
+  updatedBy String?
+  createdByUser User? @relation("TestSuiteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("TestSuiteUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   
   @@index([status])
   @@index([category])
@@ -315,6 +358,8 @@ model TestSuite {
   @@index([executionMode])
   @@index([scheduleStatus])
   @@index([nextRunTime])
+  @@index([createdBy])
+  @@index([updatedBy])
 }
 
 // 测试套件关联表（多对多）
@@ -381,13 +426,16 @@ model TestSuiteExecution {
   executionLogs ExecutionLog[]
   
   // 执行触发信息
-  triggeredBy String? // manual, schedule, api
-  triggerUser String?
+  triggeredBy   String? // manual, schedule, api
+  triggerUser   String? // 用户名快照，便于展示
+  triggerUserId String? // 关联用户ID
+  triggerUserRelation User? @relation(fields: [triggerUserId], references: [id], onDelete: SetNull)
   
   @@index([suiteId])
   @@index([status])
   @@index([startTime])
   @@index([createdAt])
+  @@index([triggerUserId])
 }
 
 // 用例执行记录
@@ -562,11 +610,19 @@ model Conversation {
   
   // 是否归档
   isArchived Boolean @default(false)
+
+  // 创建人/更新人
+  createdBy String?
+  updatedBy String?
+  createdByUser User? @relation("ConversationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("ConversationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   
   @@index([createdAt])
   @@index([updatedAt])
   @@index([isStarred])
   @@index([isArchived])
+  @@index([createdBy])
+  @@index([updatedBy])
 }
 
 // AI对话消息模型
@@ -599,17 +655,17 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 用户名（唯一）
-  username String @unique
+  // 登录名（唯一，用于登录）
+  loginName String @unique
+  
+  // 用户名（显示用，可选）
+  username String?
   
   // 密码（加密存储）
   password String
   
   // 邮箱（可选）
   email String?
-  
-  // 真实姓名
-  realName String?
   
   // 角色：admin, user
   role String @default("user")
@@ -619,8 +675,19 @@ model User {
   
   // 最后登录时间
   lastLoginAt DateTime?
+
+  // 业务数据关联（创建/更新人、执行触发人）
+  apisCreated           Api[]                @relation("ApiCreatedBy")
+  apisUpdated           Api[]                @relation("ApiUpdatedBy")
+  testCasesCreated      TestCase[]           @relation("TestCaseCreatedBy")
+  testCasesUpdated      TestCase[]           @relation("TestCaseUpdatedBy")
+  testSuitesCreated     TestSuite[]          @relation("TestSuiteCreatedBy")
+  testSuitesUpdated     TestSuite[]          @relation("TestSuiteUpdatedBy")
+  conversationsCreated  Conversation[]       @relation("ConversationCreatedBy")
+  conversationsUpdated  Conversation[]       @relation("ConversationUpdatedBy")
+  suiteExecutionsTriggered TestSuiteExecution[] @relation
   
-  @@index([username])
+  @@index([loginName])
   @@index([role])
   @@index([status])
   @@index([createdAt])

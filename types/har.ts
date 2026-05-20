@@ -202,9 +202,10 @@ export interface ApiRequestSummary {
   headers: Record<string, string>; // 请求头
   queryParams: Record<string, string>;
   requestBody?: any;
+  requestMimeType?: string; // 请求体的 MIME 类型（如 application/json, multipart/form-data, application/x-www-form-urlencoded）
   responseHeaders?: Record<string, string>; // 响应头
   responseBody?: any;
-  mimeType: string;
+  mimeType: string; // 响应的 MIME 类型
 }
 
 /**

@@ -17,7 +17,7 @@ export function ContentBlock({ content }: ContentBlockProps) {
           <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
             <FileCheck className="w-5 h-5 text-primary" />
           </div>
-          <div className="flex-1 text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+          <div className="flex-1 text-base text-foreground whitespace-pre-wrap leading-relaxed">
             {content}
           </div>
         </div>
@@ -27,7 +27,7 @@ export function ContentBlock({ content }: ContentBlockProps) {
   
   return (
     <div className="rounded-lg bg-card border border-border p-4 my-2">
-      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+      <div className="text-base text-foreground whitespace-pre-wrap leading-relaxed">
         {content}
       </div>
     </div>

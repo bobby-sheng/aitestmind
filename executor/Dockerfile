@@ -1,5 +1,5 @@
 # ================================
-# AI TestMind - Executor Dockerfile
+# API 智能测试平台 - Executor Dockerfile
 # ================================
 
 FROM python:3.11-slim

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, Eye, StopCircle, RotateCcw, FileText } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Loader2, Eye, StopCircle, RotateCcw, FileText, Search, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslations } from 'next-intl';
 import CaseExecutionDialog from '@/components/reports/CaseExecutionDialog';
@@ -27,6 +29,8 @@ interface ExecutionData {
   failedSteps: number;
   environmentSnapshot: any;
   caseExecutions: CaseExecution[];
+  triggerUser?: string | null;
+  triggerUserRelation?: { id: string; loginName: string; username?: string | null } | null;
 }
 
 interface CaseExecution {
@@ -70,29 +74,63 @@ export default function SuiteExecutionPage() {
   const [selectedCase, setSelectedCase] = useState<CaseExecution | null>(null);
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [isStoppingOrRetrying, setIsStoppingOrRetrying] = useState(false);
+  const [caseNameFilter, setCaseNameFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    loadExecution();
+    // 首屏使用轻量 summary，避免 full 详情（stepExecutions + 大量 JSON 解析）导致加载过慢
+    loadExecution('summary');
   }, [executionId]);
 
   useEffect(() => {
-    // 如果执行中，轮询更新
     if (execution && (execution.status === 'pending' || execution.status === 'running')) {
       const interval = setInterval(() => {
-        loadExecution();
-      }, 1000);
+        loadExecution('summary');
+      }, 3000);
 
       return () => clearInterval(interval);
     }
   }, [execution?.status]);
 
-  const loadExecution = async () => {
+  const loadExecution = async (mode: 'full' | 'summary' = 'full') => {
     try {
-      const response = await fetch(`/api/executions/suite/${executionId}`);
+      const url = mode === 'summary'
+        ? `/api/executions/suite/${executionId}?detail=summary`
+        : `/api/executions/suite/${executionId}`;
+      const response = await fetch(url);
       const result = await response.json();
 
       if (result.success) {
-        setExecution(result.data);
+        if (mode === 'summary' && execution) {
+          setExecution((prev) => {
+            if (!prev) return result.data;
+            return {
+              ...prev,
+              status: result.data.status,
+              endTime: result.data.endTime,
+              duration: result.data.duration,
+              passedCases: result.data.passedCases,
+              failedCases: result.data.failedCases,
+              passedSteps: result.data.passedSteps,
+              failedSteps: result.data.failedSteps,
+              caseExecutions: result.data.caseExecutions.map((ce: any) => {
+                const existing = prev.caseExecutions.find((e) => e.id === ce.id);
+                return {
+                  ...ce,
+                  testCaseSnapshot: existing?.testCaseSnapshot ?? ce.testCaseSnapshot ?? null,
+                  stepExecutions: existing?.stepExecutions ?? ce.stepExecutions ?? [],
+                };
+              }),
+            };
+          });
+        } else {
+          setExecution(result.data);
+        }
+
+        // 执行结束后补拉一次 full，用于展示完整 stepExecutions 等详情
+        if (result.data.status !== 'pending' && result.data.status !== 'running' && mode === 'summary') {
+          loadExecution('full');
+        }
       } else {
         throw new Error(result.error);
       }
@@ -226,6 +264,24 @@ export default function SuiteExecutionPage() {
     }
   };
 
+  const filteredCaseExecutions = useMemo(() => {
+    if (!execution) return [];
+    const nameKeyword = caseNameFilter.trim().toLowerCase();
+
+    const normalizeStatus = (status: string) => {
+      if (status === 'completed' || status === 'success') return 'passed';
+      return status;
+    };
+
+    const selectedStatus = normalizeStatus(statusFilter);
+
+    return execution.caseExecutions.filter((caseExec) => {
+      const matchesName = nameKeyword ? caseExec.testCaseName.toLowerCase().includes(nameKeyword) : true;
+      const matchesStatus = statusFilter === 'all' ? true : normalizeStatus(caseExec.status) === selectedStatus;
+      return matchesName && matchesStatus;
+    });
+  }, [execution, caseNameFilter, statusFilter]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -263,6 +319,11 @@ export default function SuiteExecutionPage() {
             </Button>
             <div className="text-sm text-muted-foreground">
               {execution.suiteName}
+              {(execution.triggerUser || execution.triggerUserRelation) && (
+                <span className="ml-3">
+                  {tCommon('triggerUser')}: {execution.triggerUserRelation?.username || execution.triggerUserRelation?.loginName || execution.triggerUser || '-'}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -381,14 +442,50 @@ export default function SuiteExecutionPage() {
         {/* 用例执行列表 */}
         <Card>
           <CardHeader>
-            <CardTitle>{t('caseExecutionDetails')}</CardTitle>
-            <CardDescription>
-              {t('totalCases', { count: execution.totalCases })}
-            </CardDescription>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <CardTitle>{t('caseExecutionDetails')}</CardTitle>
+                <CardDescription>
+                  {t('totalCases', { count: execution.totalCases })}
+                  {filteredCaseExecutions.length !== execution.caseExecutions.length && (
+                    <span className="ml-2">· {filteredCaseExecutions.length}/{execution.caseExecutions.length}</span>
+                  )}
+                </CardDescription>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 min-w-[320px]">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={caseNameFilter}
+                    onChange={(e) => setCaseNameFilter(e.target.value)}
+                    placeholder={t('caseNameSearch')}
+                    className="pl-9 h-9"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-[160px] h-9">
+                    <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <SelectValue placeholder={t('statusFilter')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('allStatuses')}</SelectItem>
+                    <SelectItem value="running">{t('running')}</SelectItem>
+                    <SelectItem value="passed">{t('success')}</SelectItem>
+                    <SelectItem value="failed">{t('failed')}</SelectItem>
+                    <SelectItem value="pending">{t('pending')}</SelectItem>
+                    <SelectItem value="stopped">{t('stopped')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {execution.caseExecutions.map((caseExec) => (
-              <div key={caseExec.id} className="border rounded-lg overflow-hidden">
+            {filteredCaseExecutions.length === 0 ? (
+              <div className="py-10 text-center text-muted-foreground">
+                {execution.caseExecutions.length === 0 ? t('noExecutionRecords') : t('noMatchingCaseExecutions')}
+              </div>
+            ) : filteredCaseExecutions.map((caseExec) => (
+              <div key={caseExec.id} className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg overflow-hidden">
                 <div
                   className="p-4 hover:bg-muted/50 cursor-pointer flex items-center justify-between"
                   onClick={() => toggleCase(caseExec.id)}
@@ -429,7 +526,7 @@ export default function SuiteExecutionPage() {
 
                 {/* 步骤列表 */}
                 {expandedCases.has(caseExec.id) && caseExec.stepExecutions && (
-                  <div className="border-t bg-muted/20 p-4 space-y-2">
+                  <div className="border-t border-[#e5e7eb] dark:border-[#4b5563] bg-muted/20 p-4 space-y-2">
                     {caseExec.stepExecutions.map((step) => (
                       <div
                         key={step.id}

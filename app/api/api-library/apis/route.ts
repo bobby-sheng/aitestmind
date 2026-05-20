@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { parameterizePath } from '@/lib/path-parameterization';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   try {
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const body = await request.json();
     const {
       name,
@@ -31,6 +35,7 @@ export async function POST(request: NextRequest) {
       platform,
       component,
       feature,
+      subFeature,
     } = body;
 
     // 验证必填字段
@@ -167,6 +172,7 @@ export async function POST(request: NextRequest) {
         platform: platform || null,
         component: component || null,
         feature: feature || null,
+        subFeature: subFeature || null,
         requestHeaders: safeJsonStringify(requestHeaders),
         requestQuery: safeJsonStringify(requestQuery),
         requestBody: safeJsonStringify(requestBody),
@@ -175,6 +181,7 @@ export async function POST(request: NextRequest) {
         responseHeaders: safeJsonStringify(responseHeaders),
         responseBody: safeJsonStringify(responseBody),
         responseMimeType: responseMimeType || null,
+        ...(userId && { createdBy: userId, updatedBy: userId }),
       },
     });
 
@@ -207,6 +214,8 @@ export async function POST(request: NextRequest) {
             tag: true,
           },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
     });
 

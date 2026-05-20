@@ -31,7 +31,8 @@ class SuiteExecutor:
         self, 
         suite_execution_id: str,
         suite_id: str,
-        environment_config: Dict[str, Any]
+        environment_config: Dict[str, Any],
+        run_mode: str = "serial"
     ) -> Dict[str, Any]:
         """
         执行测试测试套件
@@ -40,11 +41,11 @@ class SuiteExecutor:
             suite_execution_id: 测试套件执行ID
             suite_id: 测试套件ID
             environment_config: 环境配置
+            run_mode: 运行模式 serial(串行) / parallel(并行)
             
         Returns:
             执行结果
         """
-        # 记录执行开始
         suite_data = self.database.get_test_suite(suite_id)
         suite_name = suite_data.get('name', suite_id) if suite_data else suite_id
         
@@ -52,196 +53,61 @@ class SuiteExecutor:
         
         start_time = datetime.now()
         
-        # 初始化统计变量（必须在try外初始化，以便异常处理时可用）
         total_cases = 0
         passed_cases = 0
         failed_cases = 0
         total_passed_steps = 0
         total_failed_steps = 0
         
-        # 记录测试套件级别的日志
         self.database.create_execution_log(
             level='info',
-            message=f'开始执行测试套件: {suite_id}',
+            message=f'开始执行测试套件: {suite_id} (模式: {"并行" if run_mode == "parallel" else "串行"})',
             suite_execution_id=suite_execution_id,
             log_type='system'
         )
         
         try:
-            # 1. 获取测试套件信息
             logger.db_operation('SELECT', 'TestSuiteExecution')
             suite_execution = self.database.get_suite_execution(suite_execution_id)
             if not suite_execution:
                 raise Exception(f"测试套件执行记录不存在: {suite_execution_id}")
             
-            # 2. 获取用例列表（按order排序，只获取enabled=true的）
             logger.db_operation('SELECT', 'TestSuiteCase', data={'suiteId': suite_id})
             test_cases = self.database.get_suite_test_cases(suite_id)
             
             if not test_cases:
                 raise Exception(f"测试套件中没有启用的测试用例: {suite_id}")
             
-            logger.info(f"📋 总共 {len(test_cases)} 个测试用例待执行")
+            total_cases = len(test_cases)
+            logger.info(f"📋 总共 {total_cases} 个测试用例待执行 (模式: {run_mode})")
             
             self.database.create_execution_log(
                 level='info',
-                message=f'共有 {len(test_cases)} 个测试用例待执行',
+                message=f'共有 {total_cases} 个测试用例待执行 (模式: {"并行" if run_mode == "parallel" else "串行"})',
                 suite_execution_id=suite_execution_id,
                 log_type='system'
             )
             
-            # 3. 更新总用例数
-            total_cases = len(test_cases)
-            
-            # 4. 逐个执行用例
-            for idx, test_case_data in enumerate(test_cases):
-                # 检查是否需要停止执行
-                if self.stop_flags.get(suite_execution_id):
-                    logger.warning(f"🛑 检测到停止信号，中断执行")
-                    self.database.create_execution_log(
-                        level='warning',
-                        message='执行已被用户手动停止',
-                        suite_execution_id=suite_execution_id,
-                        log_type='system'
-                    )
-                    break
-                
-                case_order = idx + 1
-                test_case_id = test_case_data['id']
-                test_case_name = test_case_data['name']
-                test_case_config = test_case_data['flowConfig']
-                
-                logger.flow(f"\n{'─'*60}")
-                logger.flow(f"[{case_order}/{total_cases}] 执行用例: {test_case_name}")
-                logger.flow(f"{'─'*60}")
-                
-                # 4.1 创建用例执行记录
-                logger.db_operation('INSERT', 'TestCaseExecution', data={'testCaseName': test_case_name})
-                case_execution_id = self.database.create_case_execution(
-                    suite_execution_id=suite_execution_id,
-                    test_case_id=test_case_id,
-                    test_case_name=test_case_name,
-                    test_case_snapshot=test_case_config,
-                    order=case_order,
-                    total_steps=len([n for n in test_case_config.get('nodes', []) if n.get('type') not in ['start', 'end']])
+            if run_mode == "parallel":
+                results = await self._execute_parallel(
+                    test_cases, suite_execution_id, environment_config, total_cases
                 )
-                
-                # 记录用例开始日志
-                self.database.create_execution_log(
-                    level='info',
-                    message=f'开始执行用例: {test_case_name}',
-                    case_execution_id=case_execution_id,
-                    suite_execution_id=suite_execution_id,
-                    log_type='system'
+            else:
+                results = await self._execute_serial(
+                    test_cases, suite_execution_id, environment_config, total_cases
                 )
-                
-                # 4.2 执行用例
-                case_start_time = datetime.now()
-                
-                try:
-                    # 使用TestExecutor执行单个用例
-                    test_case_obj = TestCase(
-                        id=test_case_id,
-                        name=test_case_name,
-                        status=test_case_data['status'],
-                        flowConfig=FlowConfig(**test_case_config)
-                    )
-                    
-                    async with TestExecutor(
-                        timeout=60, 
-                        database=self.database, 
-                        environment_config=environment_config,
-                        case_execution_id=case_execution_id,  # 传递用例执行ID
-                        suite_execution_id=suite_execution_id  # 传递套件执行ID
-                    ) as executor:
-                        # 执行用例
-                        result = await executor.execute_test_case(test_case_obj)
-                    
-                    case_end_time = datetime.now()
-                    case_duration = int((case_end_time - case_start_time).total_seconds() * 1000)
-                    
-                    # 4.3 更新用例执行记录
-                    if result.success:
-                        passed_cases += 1
-                        self.database.update_case_execution(
-                            case_execution_id,
-                            status='passed',
-                            end_time=case_end_time,
-                            duration=case_duration,
-                            passed_steps=result.passedSteps,
-                            failed_steps=result.failedSteps,
-                            total_steps=result.totalSteps
-                        )
-                        print(f"✅ 用例执行成功 (耗时: {case_duration}ms)")
-                        
-                        self.database.create_execution_log(
-                            level='success',
-                            message=f'用例执行成功，耗时 {case_duration}ms',
-                            case_execution_id=case_execution_id,
-                            suite_execution_id=suite_execution_id,
-                            log_type='system'
-                        )
-                    else:
-                        failed_cases += 1
-                        self.database.update_case_execution(
-                            case_execution_id,
-                            status='failed',
-                            end_time=case_end_time,
-                            duration=case_duration,
-                            passed_steps=result.passedSteps,
-                            failed_steps=result.failedSteps,
-                            total_steps=result.totalSteps,
-                            error_message=result.error
-                        )
-                        print(f"❌ 用例执行失败: {result.error}")
-                        
-                        self.database.create_execution_log(
-                            level='error',
-                            message=f'用例执行失败: {result.error}',
-                            case_execution_id=case_execution_id,
-                            suite_execution_id=suite_execution_id,
-                            log_type='error',
-                            details={'error': result.error}
-                        )
-                        # 继续执行下一个用例（不中断）
-                    
-                    # 累加步骤统计
-                    total_passed_steps += result.passedSteps
-                    total_failed_steps += result.failedSteps
-                    
-                except Exception as e:
-                    case_end_time = datetime.now()
-                    case_duration = int((case_end_time - case_start_time).total_seconds() * 1000)
-                    
-                    failed_cases += 1
-                    self.database.update_case_execution(
-                        case_execution_id,
-                        status='failed',
-                        end_time=case_end_time,
-                        duration=case_duration,
-                        error_message=str(e)
-                    )
-                    print(f"❌ 用例执行异常: {str(e)}")
-                    
-                    self.database.create_execution_log(
-                        level='error',
-                        message=f'用例执行异常: {str(e)}',
-                        case_execution_id=case_execution_id,
-                        suite_execution_id=suite_execution_id,
-                        log_type='error',
-                        details={'error': str(e)}
-                    )
-                    # 继续执行下一个用例
             
-            # 5. 所有用例执行完成
+            passed_cases = results['passed_cases']
+            failed_cases = results['failed_cases']
+            total_passed_steps = results['total_passed_steps']
+            total_failed_steps = results['total_failed_steps']
+            
             end_time = datetime.now()
             duration = int((end_time - start_time).total_seconds() * 1000)
             
-            # 6. 检查是否因停止而中断
             was_stopped = self.stop_flags.get(suite_execution_id, False)
             final_status = 'stopped' if was_stopped else 'completed'
             
-            # 7. 更新测试套件执行记录
             self.database.update_suite_execution(
                 suite_execution_id,
                 status=final_status,
@@ -253,12 +119,11 @@ class SuiteExecutor:
                 failed_steps=total_failed_steps
             )
             
-            # 8. 输出汇总
             print(f"\n{'='*60}")
             if was_stopped:
                 print(f"测试套件执行已停止")
             else:
-                print(f"测试套件执行完成")
+                print(f"测试套件执行完成 (模式: {run_mode})")
             print(f"{'='*60}")
             print(f"总用例数: {total_cases}")
             print(f"通过: {passed_cases}")
@@ -282,15 +147,13 @@ class SuiteExecutor:
             end_time = datetime.now()
             duration = int((end_time - start_time).total_seconds() * 1000)
             
-            # 记录测试套件失败日志
             self.database.create_execution_log(
                 level='error',
                 message=f'测试套件执行异常: {str(e)}',
                 suite_execution_id=suite_execution_id,
-                type='system'
+                log_type='system'
             )
             
-            # 更新为失败状态，包含统计信息
             self.database.update_suite_execution(
                 suite_execution_id,
                 status='failed',
@@ -307,6 +170,225 @@ class SuiteExecutor:
                 'success': False,
                 'error': str(e)
             }
+
+    async def _execute_single_case(
+        self,
+        test_case_data: dict,
+        case_order: int,
+        total_cases: int,
+        suite_execution_id: str,
+        environment_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """执行单个测试用例，返回统计结果"""
+        test_case_id = test_case_data['id']
+        test_case_name = test_case_data['name']
+        test_case_config = test_case_data['flowConfig']
+
+        logger.flow(f"\n{'─'*60}")
+        logger.flow(f"[{case_order}/{total_cases}] 执行用例: {test_case_name}")
+        logger.flow(f"{'─'*60}")
+
+        logger.db_operation('INSERT', 'TestCaseExecution', data={'testCaseName': test_case_name})
+        case_execution_id = self.database.create_case_execution(
+            suite_execution_id=suite_execution_id,
+            test_case_id=test_case_id,
+            test_case_name=test_case_name,
+            test_case_snapshot=test_case_config,
+            order=case_order,
+            total_steps=len([n for n in test_case_config.get('nodes', []) if n.get('type') not in ['start', 'end']])
+        )
+
+        self.database.create_execution_log(
+            level='info',
+            message=f'开始执行用例: {test_case_name}',
+            case_execution_id=case_execution_id,
+            suite_execution_id=suite_execution_id,
+            log_type='system'
+        )
+
+        case_start_time = datetime.now()
+        result_info = {'passed': False, 'passed_steps': 0, 'failed_steps': 0}
+
+        try:
+            test_case_obj = TestCase(
+                id=test_case_id,
+                name=test_case_name,
+                status=test_case_data['status'],
+                flowConfig=FlowConfig(**test_case_config)
+            )
+
+            async with TestExecutor(
+                timeout=60,
+                database=self.database,
+                environment_config=environment_config,
+                case_execution_id=case_execution_id,
+                suite_execution_id=suite_execution_id
+            ) as executor:
+                result = await executor.execute_test_case(test_case_obj)
+
+            case_end_time = datetime.now()
+            case_duration = int((case_end_time - case_start_time).total_seconds() * 1000)
+
+            if result.success:
+                self.database.update_case_execution(
+                    case_execution_id,
+                    status='passed',
+                    end_time=case_end_time,
+                    duration=case_duration,
+                    passed_steps=result.passedSteps,
+                    failed_steps=result.failedSteps,
+                    total_steps=result.totalSteps
+                )
+                print(f"✅ 用例执行成功 (耗时: {case_duration}ms)")
+
+                self.database.create_execution_log(
+                    level='success',
+                    message=f'用例执行成功，耗时 {case_duration}ms',
+                    case_execution_id=case_execution_id,
+                    suite_execution_id=suite_execution_id,
+                    log_type='system'
+                )
+                result_info = {'passed': True, 'passed_steps': result.passedSteps, 'failed_steps': result.failedSteps}
+            else:
+                self.database.update_case_execution(
+                    case_execution_id,
+                    status='failed',
+                    end_time=case_end_time,
+                    duration=case_duration,
+                    passed_steps=result.passedSteps,
+                    failed_steps=result.failedSteps,
+                    total_steps=result.totalSteps,
+                    error_message=result.error
+                )
+                print(f"❌ 用例执行失败: {result.error}")
+
+                self.database.create_execution_log(
+                    level='error',
+                    message=f'用例执行失败: {result.error}',
+                    case_execution_id=case_execution_id,
+                    suite_execution_id=suite_execution_id,
+                    log_type='error',
+                    details={'error': result.error}
+                )
+                result_info = {'passed': False, 'passed_steps': result.passedSteps, 'failed_steps': result.failedSteps}
+
+        except Exception as e:
+            case_end_time = datetime.now()
+            case_duration = int((case_end_time - case_start_time).total_seconds() * 1000)
+
+            self.database.update_case_execution(
+                case_execution_id,
+                status='failed',
+                end_time=case_end_time,
+                duration=case_duration,
+                error_message=str(e)
+            )
+            print(f"❌ 用例执行异常: {str(e)}")
+
+            self.database.create_execution_log(
+                level='error',
+                message=f'用例执行异常: {str(e)}',
+                case_execution_id=case_execution_id,
+                suite_execution_id=suite_execution_id,
+                log_type='error',
+                details={'error': str(e)}
+            )
+
+        return result_info
+
+    async def _execute_serial(
+        self,
+        test_cases: List[dict],
+        suite_execution_id: str,
+        environment_config: Dict[str, Any],
+        total_cases: int,
+    ) -> Dict[str, int]:
+        """串行逐个执行测试用例"""
+        passed_cases = 0
+        failed_cases = 0
+        total_passed_steps = 0
+        total_failed_steps = 0
+
+        for idx, test_case_data in enumerate(test_cases):
+            if self.stop_flags.get(suite_execution_id):
+                logger.warning(f"🛑 检测到停止信号，中断执行")
+                self.database.create_execution_log(
+                    level='warning',
+                    message='执行已被用户手动停止',
+                    suite_execution_id=suite_execution_id,
+                    log_type='system'
+                )
+                break
+
+            info = await self._execute_single_case(
+                test_case_data, idx + 1, total_cases, suite_execution_id, environment_config
+            )
+            if info['passed']:
+                passed_cases += 1
+            else:
+                failed_cases += 1
+            total_passed_steps += info['passed_steps']
+            total_failed_steps += info['failed_steps']
+
+        return {
+            'passed_cases': passed_cases,
+            'failed_cases': failed_cases,
+            'total_passed_steps': total_passed_steps,
+            'total_failed_steps': total_failed_steps,
+        }
+
+    async def _execute_parallel(
+        self,
+        test_cases: List[dict],
+        suite_execution_id: str,
+        environment_config: Dict[str, Any],
+        total_cases: int,
+    ) -> Dict[str, int]:
+        """并行执行所有测试用例，限制最大并发数为 3"""
+        semaphore = asyncio.Semaphore(3)
+
+        async def _wrapped_execute(idx: int, test_case_data: dict):
+            async with semaphore:
+                return await self._execute_single_case(
+                    test_case_data,
+                    idx + 1,
+                    total_cases,
+                    suite_execution_id,
+                    environment_config,
+                )
+
+        tasks = [
+            _wrapped_execute(idx, test_case_data)
+            for idx, test_case_data in enumerate(test_cases)
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        passed_cases = 0
+        failed_cases = 0
+        total_passed_steps = 0
+        total_failed_steps = 0
+
+        for r in results:
+            if isinstance(r, Exception):
+                failed_cases += 1
+                print(f"❌ 并行用例执行异常: {str(r)}")
+            elif isinstance(r, dict):
+                if r.get('passed'):
+                    passed_cases += 1
+                else:
+                    failed_cases += 1
+                total_passed_steps += r.get('passed_steps', 0)
+                total_failed_steps += r.get('failed_steps', 0)
+            else:
+                failed_cases += 1
+
+        return {
+            'passed_cases': passed_cases,
+            'failed_cases': failed_cases,
+            'total_passed_steps': total_passed_steps,
+            'total_failed_steps': total_failed_steps,
+        }
 
 
 # 测试代码

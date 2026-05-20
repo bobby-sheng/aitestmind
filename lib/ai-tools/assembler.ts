@@ -17,6 +17,7 @@ import {
   FlowNode,
   FlowEdge,
   ApiNodeData,
+  Assertion,
   ParamValue,
   RequestConfig,
 } from '@/types/test-case';
@@ -34,6 +35,7 @@ export interface ApiMetadata {
   category?: string;
   tags?: string[];
   requestHeaders?: Record<string, any>;
+  requestMimeType?: string; // 请求内容类型，如 "application/json"、"multipart/form-data"
   requestQuery?: Record<string, any>;
   requestBody?: Record<string, any>;
   responseStatus?: number;
@@ -147,6 +149,21 @@ function applyVariableReferences(
 }
 
 /**
+ * 将 MIME 类型转换为 ContentType 枚举值
+ */
+function mimeTypeToContentType(mimeType?: string): 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw' | 'none' | undefined {
+  if (!mimeType) return undefined;
+  
+  const lowerMime = mimeType.toLowerCase();
+  if (lowerMime.includes('application/json')) return 'json';
+  if (lowerMime.includes('multipart/form-data')) return 'form-data';
+  if (lowerMime.includes('application/x-www-form-urlencoded')) return 'x-www-form-urlencoded';
+  if (lowerMime.includes('text/')) return 'raw';
+  
+  return undefined;
+}
+
+/**
  * 构建 API 节点的 requestConfig
  */
 function buildRequestConfig(
@@ -162,7 +179,35 @@ function buildRequestConfig(
     body: {},
   };
 
-  // 1. 处理 AI 指定的参数值
+  // 1. 首先从 API 元数据中提取默认值（这是录制时保存的原始数据）
+  console.log('📋 [组装引擎] 从 API 元数据提取默认参数');
+  
+  // 1.1 提取默认请求头
+  if (api.requestHeaders && typeof api.requestHeaders === 'object') {
+    requestConfig.headers = transformToParamValue(api.requestHeaders);
+    console.log('  ✅ 默认 headers 已填充');
+  }
+  
+  // 1.2 提取默认查询参数
+  if (api.requestQuery && typeof api.requestQuery === 'object') {
+    requestConfig.queryParams = transformToParamValue(api.requestQuery);
+    console.log('  ✅ 默认 queryParams 已填充');
+  }
+  
+  // 1.3 提取默认请求体（包括 form-data 表单数据）
+  if (api.requestBody && typeof api.requestBody === 'object') {
+    requestConfig.body = transformToParamValue(api.requestBody);
+    console.log('  ✅ 默认 body 已填充');
+  }
+  
+  // 1.4 设置内容类型（json/form-data/x-www-form-urlencoded 等）
+  const contentType = mimeTypeToContentType(api.requestMimeType);
+  if (contentType) {
+    requestConfig.contentType = contentType;
+    console.log(`  ✅ contentType 已设置: ${contentType} (原始: ${api.requestMimeType})`);
+  }
+
+  // 2. 处理 AI 指定的参数值（会覆盖/合并默认值）
   if (nodePlan.params) {
     console.log('📝 [组装引擎] AI 指定的参数:', JSON.stringify(nodePlan.params, null, 2));
     
@@ -171,20 +216,35 @@ function buildRequestConfig(
       console.log('  ✅ pathParams 已转换为 ParamValue 格式');
     }
     if (nodePlan.params.queryParams) {
-      requestConfig.queryParams = transformToParamValue(nodePlan.params.queryParams);
-      console.log('  ✅ queryParams 已转换为 ParamValue 格式');
+      // 合并 AI 指定的 queryParams 到默认值（AI 指定的优先）
+      const aiQueryParams = transformToParamValue(nodePlan.params.queryParams);
+      requestConfig.queryParams = {
+        ...requestConfig.queryParams,
+        ...aiQueryParams,
+      };
+      console.log('  ✅ AI 指定的 queryParams 已合并');
     }
     if (nodePlan.params.headers) {
-      requestConfig.headers = transformToParamValue(nodePlan.params.headers);
-      console.log('  ✅ headers 已转换为 ParamValue 格式');
+      // 合并 AI 指定的 headers 到默认 headers（AI 指定的优先）
+      const aiHeaders = transformToParamValue(nodePlan.params.headers);
+      requestConfig.headers = {
+        ...requestConfig.headers,
+        ...aiHeaders,
+      };
+      console.log('  ✅ AI 指定的 headers 已合并');
     }
     if (nodePlan.params.body) {
-      requestConfig.body = transformToParamValue(nodePlan.params.body);
-      console.log('  ✅ body 已转换为 ParamValue 格式');
+      // 合并 AI 指定的 body 到默认 body（AI 指定的优先）
+      const aiBody = transformToParamValue(nodePlan.params.body);
+      requestConfig.body = {
+        ...requestConfig.body,
+        ...aiBody,
+      };
+      console.log('  ✅ AI 指定的 body 已合并');
     }
   }
 
-  // 2. 应用变量引用（覆盖对应字段）
+  // 3. 应用变量引用（覆盖对应字段）
   if (nodePlan.variableRefs && nodePlan.variableRefs.length > 0) {
     console.log(`\n🔗 [组装引擎] 应用 ${nodePlan.variableRefs.length} 个变量引用:`);
     nodePlan.variableRefs.forEach((ref, index) => {
@@ -201,6 +261,51 @@ function buildRequestConfig(
 }
 
 /**
+ * 为缺少断言的 API 节点生成默认断言
+ */
+function generateDefaultAssertions(api: ApiMetadata, nodePlan: ApiNodePlan): Assertion[] {
+  return [
+    {
+      field: 'status',
+      operator: 'equals',
+      expected: 200,
+      expectedType: 'number',
+    },
+  ];
+}
+
+/**
+ * 确保断言列表至少包含 status 校验；如果为空则自动生成默认断言
+ */
+function ensureAssertions(
+  assertions: Assertion[] | undefined,
+  api: ApiMetadata,
+  nodePlan: ApiNodePlan
+): Assertion[] {
+  if (!assertions || assertions.length === 0) {
+    const defaults = generateDefaultAssertions(api, nodePlan);
+    console.log(`  ⚠️ [组装引擎] 节点 ${nodePlan.id} 缺少断言，已自动补充 ${defaults.length} 条默认断言`);
+    return defaults;
+  }
+
+  const hasStatusAssertion = assertions.some(
+    a => a.field === 'status' || a.field === 'responseStatus'
+  );
+  if (!hasStatusAssertion) {
+    const statusAssertion: Assertion = {
+      field: 'status',
+      operator: 'equals',
+      expected: 200,
+      expectedType: 'number',
+    };
+    console.log(`  ⚠️ [组装引擎] 节点 ${nodePlan.id} 缺少 status 断言，已自动补充`);
+    return [statusAssertion, ...assertions];
+  }
+
+  return assertions;
+}
+
+/**
  * 构建 API 节点
  */
 function buildApiNode(
@@ -209,16 +314,17 @@ function buildApiNode(
   position: { x: number; y: number }
 ): FlowNode {
   const requestConfig = buildRequestConfig(api, nodePlan);
+  const finalAssertions = ensureAssertions(nodePlan.assertions, api, nodePlan);
 
   const nodeData: ApiNodeData = {
     apiId: api.id,
     name: api.name,
     method: api.method,
-    url: api.path, // ⚠️ 使用 path 而不是 url
+    url: api.path,
     requestConfig,
-    assertions: nodePlan.assertions || [],
-    responseExtract: [], // 不需要预先提取变量
-    wait: nodePlan.wait, // 等待配置
+    assertions: finalAssertions,
+    responseExtract: [],
+    wait: nodePlan.wait,
     isCleanup: nodePlan.isCleanup || false,
   };
 

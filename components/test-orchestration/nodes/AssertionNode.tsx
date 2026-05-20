@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { CheckCircle, Settings, AlertCircle, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle, Settings, AlertCircle, Loader2, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface ExecutionStatus {
@@ -38,7 +38,7 @@ export default function AssertionNode({ data, selected, id }: NodeProps) {
   // 获取边框颜色
   const getBorderColor = () => {
     if (!execution?.status) {
-      return selected ? 'border-primary' : 'border-border';
+      return selected ? 'border-primary' : 'border-[#e5e7eb] dark:border-[#4b5563]';
     }
     
     switch (execution.status) {
@@ -49,7 +49,7 @@ export default function AssertionNode({ data, selected, id }: NodeProps) {
       case 'error':
         return 'border-red-500 shadow-red-200';
       default:
-        return selected ? 'border-primary' : 'border-border';
+        return selected ? 'border-primary' : 'border-[#e5e7eb] dark:border-[#4b5563]';
     }
   };
 
@@ -69,13 +69,21 @@ export default function AssertionNode({ data, selected, id }: NodeProps) {
     }
   };
 
-  // 不在节点内处理点击，完全交给 React Flow
+  // 处理删除节点
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const deleteEvent = new CustomEvent('node-delete', { 
+      detail: { nodeId: id },
+      bubbles: true 
+    });
+    document.dispatchEvent(deleteEvent);
+  };
   
   return (
     <>
       {/* 节点主体 */}
       <div 
-        className={`relative px-4 py-3 shadow-lg rounded-lg bg-card border-2 transition-all min-w-[150px] select-none ${getBorderColor()} ${
+        className={`group relative px-4 py-3 shadow-lg rounded-lg bg-card border-2 transition-all min-w-[150px] select-none ${getBorderColor()} ${
           selected ? 'ring-2 ring-primary/20' : 'hover:border-primary'
         }`}
         style={{ 
@@ -85,6 +93,14 @@ export default function AssertionNode({ data, selected, id }: NodeProps) {
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
+        {/* 删除按钮 */}
+        <button
+          onClick={handleDelete}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-md hover:scale-110 z-10"
+          title={t('delete')}
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             {!execution?.status ? (
@@ -127,25 +143,25 @@ export default function AssertionNode({ data, selected, id }: NodeProps) {
         type="target"
         position={Position.Top}
         id="top"
-        className="w-3 h-3 !bg-border hover:!bg-primary transition-colors"
+        className="w-3 h-3 !bg-[#e5e7eb] dark:!bg-[#4b5563] hover:!bg-primary transition-colors"
       />
       <Handle
         type="target"
         position={Position.Left}
         id="left"
-        className="w-3 h-3 !bg-border hover:!bg-primary transition-colors"
+        className="w-3 h-3 !bg-[#e5e7eb] dark:!bg-[#4b5563] hover:!bg-primary transition-colors"
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
-        className="w-3 h-3 !bg-border hover:!bg-primary transition-colors"
+        className="w-3 h-3 !bg-[#e5e7eb] dark:!bg-[#4b5563] hover:!bg-primary transition-colors"
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        className="w-3 h-3 !bg-border hover:!bg-primary transition-colors"
+        className="w-3 h-3 !bg-[#e5e7eb] dark:!bg-[#4b5563] hover:!bg-primary transition-colors"
       />
     </>
   );

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 
 /**
  * 获取仪表盘统计数据
@@ -9,60 +7,106 @@ const prisma = new PrismaClient();
  */
 export async function GET(request: NextRequest) {
   try {
-    // 1. API总数
-    const totalApis = await prisma.api.count();
-    
-    // 本周新增API数（计算7天内）
+    // 计算时间范围
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    const newApisThisWeek = await prisma.api.count({
-      where: {
-        createdAt: {
-          gte: weekAgo
-        }
-      }
-    });
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // 2. 测试用例总数
-    const totalTestCases = await prisma.testCase.count({
-      where: {
-        status: {
-          not: "archived"
+    // 并行执行所有独立的数据库查询，显著提升性能
+    const [
+      totalApis,
+      newApisThisWeek,
+      totalTestCases,
+      newTestCasesThisWeek,
+      recentExecutions,
+      latestExecution,
+      recentRuns,
+      trendExecutions
+    ] = await Promise.all([
+      // 1. API总数
+      prisma.api.count(),
+      
+      // 本周新增API数
+      prisma.api.count({
+        where: {
+          createdAt: { gte: weekAgo }
         }
-      }
-    });
-    
-    // 本周新增测试用例
-    const newTestCasesThisWeek = await prisma.testCase.count({
-      where: {
-        createdAt: {
-          gte: weekAgo
+      }),
+
+      // 2. 测试用例总数
+      prisma.testCase.count({
+        where: {
+          status: { not: "archived" }
+        }
+      }),
+      
+      // 本周新增测试用例
+      prisma.testCase.count({
+        where: {
+          createdAt: { gte: weekAgo },
+          status: { not: "archived" }
+        }
+      }),
+
+      // 3. 执行成功率统计（基于最近30次执行）
+      prisma.testSuiteExecution.findMany({
+        where: {
+          status: { in: ["completed", "failed"] }
         },
-        status: {
-          not: "archived"
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          status: true,
+          passedCases: true,
+          failedCases: true,
+          totalCases: true,
+          createdAt: true
         }
-      }
-    });
+      }),
 
-    // 3. 执行成功率统计（基于最近30次执行）
-    const recentExecutions = await prisma.testSuiteExecution.findMany({
-      where: {
-        status: {
-          in: ["completed", "failed"]
+      // 4. 最近失败的用例数（最近一次执行中）
+      prisma.testSuiteExecution.findFirst({
+        where: {
+          status: { in: ["completed", "failed"] }
+        },
+        orderBy: { createdAt: "desc" },
+        select: { failedCases: true }
+      }),
+
+      // 5. 最近执行记录（最近10条）
+      prisma.testSuiteExecution.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          suiteName: true,
+          status: true,
+          createdAt: true,
+          startTime: true,
+          endTime: true,
+          passedCases: true,
+          failedCases: true,
+          totalCases: true,
+          duration: true
         }
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: 30,
-      select: {
-        status: true,
-        passedCases: true,
-        failedCases: true,
-        totalCases: true,
-        createdAt: true
-      }
-    });
+      }),
+
+      // 6. 执行趋势数据（最近30天）
+      prisma.testSuiteExecution.findMany({
+        where: {
+          createdAt: { gte: thirtyDaysAgo },
+          status: { in: ["completed", "failed"] }
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          createdAt: true,
+          passedCases: true,
+          failedCases: true,
+          totalCases: true
+        }
+      })
+    ]);
 
     // 计算总体成功率
     let totalPassed = 0;
@@ -98,68 +142,10 @@ export async function GET(request: NextRequest) {
       ? (parseFloat(successRate) - lastWeekRate).toFixed(1)
       : "0.0";
 
-    // 4. 最近失败的用例数（最近一次执行中）
-    const latestExecution = await prisma.testSuiteExecution.findFirst({
-      where: {
-        status: {
-          in: ["completed", "failed"]
-        }
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      select: {
-        failedCases: true
-      }
-    });
-
+    // 失败用例数
     const failedCases = latestExecution?.failedCases || 0;
 
-    // 5. 最近执行记录（最近10条）
-    const recentRuns = await prisma.testSuiteExecution.findMany({
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: 10,
-      select: {
-        id: true,
-        suiteName: true,
-        status: true,
-        createdAt: true,
-        startTime: true,
-        endTime: true,
-        passedCases: true,
-        failedCases: true,
-        totalCases: true,
-        duration: true
-      }
-    });
-
-    // 6. 执行趋势数据（最近30天，按天统计）
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const trendExecutions = await prisma.testSuiteExecution.findMany({
-      where: {
-        createdAt: {
-          gte: thirtyDaysAgo
-        },
-        status: {
-          in: ["completed", "failed"]
-        }
-      },
-      orderBy: {
-        createdAt: "asc"
-      },
-      select: {
-        createdAt: true,
-        passedCases: true,
-        failedCases: true,
-        totalCases: true
-      }
-    });
-
-    // 按日期分组统计
+    // 按日期分组统计趋势数据
     const trendData: Record<string, { date: string; total: number; passed: number; failed: number }> = {};
     
     trendExecutions.forEach(exec => {

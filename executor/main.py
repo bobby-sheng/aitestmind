@@ -1,13 +1,15 @@
 """
 FastAPI 主应用 - 测试执行器 API
 """
+import asyncio
 import os
+import traceback as tb_mod
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Set
 from datetime import datetime
 
 from database import Database
@@ -18,6 +20,7 @@ from scheduler import TestSuiteScheduler
 from models import ExecutionResult
 
 # 数据库路径
+# 统一使用 prisma/dev.db（与Prisma配置一致）
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "prisma", "dev.db")
 db = Database(DB_PATH)
 
@@ -26,6 +29,9 @@ scheduler: Optional[TestSuiteScheduler] = None
 
 # 全局停止标志（execution_id -> should_stop）
 stop_flags = {}
+
+# 正在执行的套件 ID 集合（用于防止重复提交）
+running_suites: Set[str] = set()
 
 
 @asynccontextmanager
@@ -106,6 +112,7 @@ class ExecuteSuiteRequest(BaseModel):
     suite_execution_id: str
     suite_id: str
     environment_config: dict
+    run_mode: str = "serial"
 
 
 class TestCaseListResponse(BaseModel):
@@ -303,13 +310,33 @@ async def execute_test_case_stream(request: ExecuteRequest):
         raise HTTPException(status_code=500, detail=f"执行异常: {str(e)}")
 
 
+async def _run_suite_in_background(
+    suite_execution_id: str,
+    suite_id: str,
+    environment_config: dict,
+    run_mode: str = "serial",
+):
+    """后台执行测试套件，执行完毕后自动清理状态"""
+    try:
+        suite_executor = SuiteExecutor(db, stop_flags)
+        await suite_executor.execute_suite(
+            suite_execution_id=suite_execution_id,
+            suite_id=suite_id,
+            environment_config=environment_config,
+            run_mode=run_mode,
+        )
+    except Exception as e:
+        print(f"❌ 后台执行测试套件异常: {e}")
+        tb_mod.print_exc()
+    finally:
+        stop_flags.pop(suite_execution_id, None)
+        running_suites.discard(suite_execution_id)
+
+
 @app.post("/api/execute-suite")
 async def execute_suite(request: ExecuteSuiteRequest):
     """
-    执行测试测试套件
-    
-    Args:
-        request: 测试套件执行请求
+    执行测试套件（异步 fire-and-forget，立即返回）
     """
     try:
         print(f"\n{'='*60}")
@@ -317,43 +344,49 @@ async def execute_suite(request: ExecuteSuiteRequest):
         print(f"Suite Execution ID: {request.suite_execution_id}")
         print(f"Suite ID: {request.suite_id}")
         print(f"{'='*60}\n")
-        
-        # 清除停止标志（如果存在）
-        if request.suite_execution_id in stop_flags:
-            del stop_flags[request.suite_execution_id]
-        
-        # 创建测试套件执行器
-        suite_executor = SuiteExecutor(db, stop_flags)
-        
-        # 执行测试套件
-        result = await suite_executor.execute_suite(
-            suite_execution_id=request.suite_execution_id,
-            suite_id=request.suite_id,
-            environment_config=request.environment_config
+
+        if request.suite_execution_id in running_suites:
+            return {
+                "success": False,
+                "error": "该执行任务已在运行中",
+            }
+
+        stop_flags.pop(request.suite_execution_id, None)
+        running_suites.add(request.suite_execution_id)
+
+        asyncio.create_task(
+            _run_suite_in_background(
+                suite_execution_id=request.suite_execution_id,
+                suite_id=request.suite_id,
+                environment_config=request.environment_config,
+                run_mode=request.run_mode,
+            )
         )
-        
-        # 执行完成后清除停止标志
-        if request.suite_execution_id in stop_flags:
-            del stop_flags[request.suite_execution_id]
-        
-        return result
-    
+
+        return {
+            "success": True,
+            "accepted": True,
+            "message": "测试套件已提交后台执行",
+            "suiteExecutionId": request.suite_execution_id,
+        }
+
     except Exception as e:
-        import traceback
         error_msg = str(e)
-        error_trace = traceback.format_exc()
-        
-        print(f"❌ 执行测试套件失败:")
+        error_trace = tb_mod.format_exc()
+
+        print(f"❌ 提交测试套件执行失败:")
         print(error_msg)
         print(error_trace)
-        
+
+        running_suites.discard(request.suite_execution_id)
+
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
                 "error": error_msg,
-                "trace": error_trace
-            }
+                "trace": error_trace,
+            },
         )
 
 
@@ -609,7 +642,7 @@ if __name__ == "__main__":
     
     # 从环境变量读取配置
     host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", "8001"))
+    port = int(os.getenv("API_PORT", "18015"))
     
     print(f"🚀 启动测试执行器 API")
     print(f"📍 地址: http://{host}:{port}")
