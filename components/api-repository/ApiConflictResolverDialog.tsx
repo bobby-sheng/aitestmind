@@ -159,7 +159,7 @@ export function ApiConflictResolverDialog({
 
         {/* 批量操作按钮 */}
         {conflicts.length > 1 && (
-          <div className="border-y border-border py-3">
+          <div className="border-y border-[#e5e7eb] dark:border-[#4b5563] py-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-muted-foreground">
                 {t('batchActions')}

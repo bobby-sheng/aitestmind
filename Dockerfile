@@ -1,5 +1,5 @@
 # ================================
-# AI TestMind - Frontend Dockerfile
+# API 智能测试平台 - Frontend Dockerfile
 # ================================
 
 # 第一阶段：构建依赖

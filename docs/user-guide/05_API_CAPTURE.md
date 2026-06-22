@@ -19,7 +19,7 @@
 
 ## 📖 概述
 
-API 采集是使用 AI TestMind 的第一步，也是最重要的一步。通过采集，你可以：
+API 采集是使用 API 智能测试平台 的第一步，也是最重要的一步。通过采集，你可以：
 
 - 📝 **自动记录** API 的完整信息（URL、参数、响应）
 - 🏷️ **智能分类** API 按业务领域自动归类
@@ -188,7 +188,7 @@ http://localhost:3000/api-capture
 2. File → Export Sessions → HTTP Archive
 ```
 
-#### 2. 导入到 AI TestMind
+#### 2. 导入到 API 智能测试平台
 
 **方式 A: 拖拽上传**
 ```
@@ -256,7 +256,7 @@ curl -X POST http://localhost:3000/api/api-library/import-har \
 # 1. 从 Chrome 导出 HAR
 # 操作：F12 → Network → 刷新 → 右键 → Save as HAR
 
-# 2. 导入到 AI TestMind
+# 2. 导入到 API 智能测试平台
 curl -X POST http://localhost:3000/api/api-library/import-har \
   -F "file=@shopping-cart.har" \
   -F "platform=电商平台"
@@ -453,7 +453,7 @@ private debounceDelay = 500;  // 默认 500ms
 
 ### 1. 智能分类
 
-AI TestMind 会自动对采集的 API 进行四层分类：
+API 智能测试平台 会自动对采集的 API 进行四层分类：
 
 ```
 平台（Platform）

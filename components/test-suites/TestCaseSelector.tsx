@@ -11,20 +11,24 @@ import {
   Filter, 
   ChevronLeft, 
   ChevronRight,
-  Folder,
-  FolderOpen,
   FileCode
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslations } from 'next-intl';
+import { TestCaseTree } from './TestCaseTree';
 
 interface TestCase {
   id: string;
   name: string;
   description?: string;
   status: string;
+  priority?: string;
   category?: string;
+  platform?: string;
+  component?: string;
+  feature?: string;
+   subFeature?: string;
 }
 
 interface TestCaseSelectorProps {
@@ -43,7 +47,6 @@ export function TestCaseSelector({
   // 状态管理
   const [loading, setLoading] = useState(false);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -52,7 +55,7 @@ export function TestCaseSelector({
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 10;
 
-  // 全局测试用例（用于搜索）
+  // 全局测试用例（用于搜索和分类树）
   const [allTestCases, setAllTestCases] = useState<TestCase[]>([]);
 
   // 加载数据
@@ -67,23 +70,14 @@ export function TestCaseSelector({
   const loadTestCases = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/test-cases');
+      // 方案A：一次性拉取全量已发布用例（后端默认 pageSize=20，会导致数据不全）
+      const response = await fetch('/api/test-cases?status=active&page=1&pageSize=100000');
       const result = await response.json();
       
       if (result.success) {
-        // 只显示发布状态的测试用例
+        // 接口已按 status=active 过滤，这里仅做兜底
         const publishedCases = result.data.filter((tc: TestCase) => tc.status === 'active');
         setAllTestCases(publishedCases);
-        
-        // 提取分类
-        const uniqueCategories = Array.from(
-          new Set(
-            publishedCases
-              .map((tc: TestCase) => tc.category)
-              .filter((c: string | undefined) => c)
-          )
-        ) as string[];
-        setCategories(uniqueCategories);
       }
     } catch (error) {
       console.error('Error loading test cases:', error);
@@ -100,19 +94,58 @@ export function TestCaseSelector({
   const filterTestCases = () => {
     let filtered = [...allTestCases];
 
-    // 分类筛选
+    // 分类筛选（基于四层分类结构）
     if (selectedCategory) {
-      filtered = filtered.filter(tc => tc.category === selectedCategory);
+      // 处理"未分类"情况
+      if (selectedCategory === 'uncategorized') {
+        filtered = filtered.filter(tc => {
+          const tcAny = tc as any;
+          return !tcAny.platform && !tcAny.component && !tcAny.feature && !tcAny.subFeature;
+        });
+      } else {
+        // 解析分类路径
+        const parts = selectedCategory.split('/');
+        filtered = filtered.filter(tc => {
+          const tcAny = tc as any;
+          if (parts.length === 1) {
+            // 只选择了平台
+            return tcAny.platform === parts[0];
+          } else if (parts.length === 2) {
+            // 选择了平台和组件
+            return tcAny.platform === parts[0] && tcAny.component === parts[1];
+          } else if (parts.length === 3) {
+            // 选择了平台、组件和功能
+            return tcAny.platform === parts[0] && tcAny.component === parts[1] && tcAny.feature === parts[2];
+          } else if (parts.length === 4) {
+            // 选择了平台、组件、功能和子功能
+            return (
+              tcAny.platform === parts[0] &&
+              tcAny.component === parts[1] &&
+              tcAny.feature === parts[2] &&
+              tcAny.subFeature === parts[3]
+            );
+          }
+          return false;
+        });
+      }
     }
 
     // 搜索筛选（全局搜索）
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
-        tc =>
-          tc.name.toLowerCase().includes(term) ||
-          (tc.description && tc.description.toLowerCase().includes(term)) ||
-          (tc.category && tc.category.toLowerCase().includes(term))
+        tc => {
+          const tcAny = tc as any;
+          return (
+            tc.name.toLowerCase().includes(term) ||
+            (tc.description && tc.description.toLowerCase().includes(term)) ||
+            (tc.category && tc.category.toLowerCase().includes(term)) ||
+            (tcAny.platform && tcAny.platform.toLowerCase().includes(term)) ||
+            (tcAny.component && tcAny.component.toLowerCase().includes(term)) ||
+            (tcAny.feature && tcAny.feature.toLowerCase().includes(term)) ||
+            (tcAny.subFeature && tcAny.subFeature.toLowerCase().includes(term))
+          );
+        }
       );
     }
 
@@ -164,75 +197,23 @@ export function TestCaseSelector({
   const allCurrentPageSelected = testCases.length > 0 && testCases.every(tc => selectedIds.has(tc.id));
 
   return (
-    <div className="flex h-[600px] border rounded-lg overflow-hidden">
-      {/* 左侧分类树 */}
-      <div className="w-64 flex-shrink-0 border-r bg-muted/10 flex flex-col">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-sm mb-3">{t('categoryFilter')}</h3>
-          <div className="space-y-1">
-            <button
-              onClick={() => {
-                setSelectedCategory(undefined);
-                setCurrentPage(1);
-              }}
-              className={cn(
-                "w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors",
-                !selectedCategory
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <Folder className="h-4 w-4" />
-                <span>{t('allCases')}</span>
-              </div>
-              <Badge variant={!selectedCategory ? "secondary" : "outline"}>
-                {allTestCases.length}
-              </Badge>
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-1">
-            {categories.map((category) => {
-              const count = allTestCases.filter(tc => tc.category === category).length;
-              return (
-                <button
-                  key={category}
-                  onClick={() => {
-                    setSelectedCategory(category);
-                    setCurrentPage(1);
-                  }}
-                  className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors",
-                    selectedCategory === category
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    {selectedCategory === category ? (
-                      <FolderOpen className="h-4 w-4" />
-                    ) : (
-                      <Folder className="h-4 w-4" />
-                    )}
-                    <span className="truncate">{category}</span>
-                  </div>
-                  <Badge variant={selectedCategory === category ? "secondary" : "outline"}>
-                    {count}
-                  </Badge>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+    <div className="flex h-[65vh] min-h-[420px] max-h-[800px] border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg overflow-hidden">
+      {/* 左侧分类树 - 使用新的 TestCaseTree 组件 */}
+      <div className="w-64 flex-shrink-0">
+        <TestCaseTree
+          testCases={allTestCases}
+          selectedCategory={selectedCategory}
+          onCategoryChange={(category) => {
+            setSelectedCategory(category);
+            setCurrentPage(1);
+          }}
+        />
       </div>
 
       {/* 右侧内容区 */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 搜索栏 */}
-        <div className="p-4 border-b bg-background space-y-3">
+        <div className="p-4 border-b border-[#e5e7eb] dark:border-[#4b5563] bg-background space-y-3">
           {/* 提示信息 */}
           <div className="p-3 bg-blue-50 dark:bg-blue-900/50 border-l-4 border-blue-500 rounded-md shadow-sm">
             <div className="flex items-start gap-2">
@@ -285,7 +266,7 @@ export function TestCaseSelector({
           ) : (
             <div className="space-y-2">
               {/* 全选 */}
-              <div className="flex items-center space-x-3 p-3 border rounded-lg bg-muted/20">
+              <div className="flex items-center space-x-3 p-3 border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg bg-muted/20">
                 <Checkbox
                   checked={allCurrentPageSelected}
                   onCheckedChange={toggleAll}
@@ -317,6 +298,19 @@ export function TestCaseSelector({
                           <Badge variant="outline" className="text-xs">
                             {testCase.status === 'active' ? t('statusPublished') : t('statusDraft')}
                           </Badge>
+                          <Badge variant="outline" className="text-xs flex items-center gap-1.5">
+                            <span
+                              className={cn(
+                                'size-2 shrink-0 rounded-full',
+                                (testCase.priority || 'P2') === 'P0' && 'bg-rose-400',
+                                (testCase.priority || 'P2') === 'P1' && 'bg-amber-400',
+                                (testCase.priority || 'P2') === 'P2' && 'bg-sky-400',
+                                (testCase.priority || 'P2') === 'P3' && 'bg-gray-400'
+                              )}
+                              aria-hidden
+                            />
+                            {testCase.priority || 'P2'}
+                          </Badge>
                         </div>
                         {testCase.description && (
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
@@ -342,7 +336,7 @@ export function TestCaseSelector({
 
         {/* 分页 */}
         {testCases.length > 0 && (
-          <div className="p-4 border-t bg-background">
+          <div className="p-4 border-t border-[#e5e7eb] dark:border-[#4b5563] bg-background">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {t('pageOfTotal', { current: currentPage, total: totalPages })}

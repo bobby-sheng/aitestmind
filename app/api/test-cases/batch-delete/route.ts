@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
     logger.apiRequest('POST', '/api/test-cases/batch-delete', OperationType.DELETE, { count: ids.length });
 
     // 首先删除所有相关的步骤
-    logger.db(OperationType.DELETE, 'TestCaseStep', 'deleteMany', { testCaseIds: ids });
-    await prisma.testCaseStep.deleteMany({
+    logger.db(OperationType.DELETE, 'TestStep', 'deleteMany', { testCaseIds: ids });
+    await prisma.testStep.deleteMany({
       where: {
         testCaseId: {
           in: ids,

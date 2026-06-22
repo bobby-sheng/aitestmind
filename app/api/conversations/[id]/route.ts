@@ -14,6 +14,8 @@ export async function GET(
         messages: {
           orderBy: { createdAt: 'asc' },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
     });
 
@@ -44,6 +46,10 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const { getCurrentUser } = await import('@/lib/auth');
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     const body = await request.json();
     const { title, summary, isStarred, isArchived } = body;
 
@@ -54,6 +60,7 @@ export async function PATCH(
         ...(summary !== undefined && { summary }),
         ...(isStarred !== undefined && { isStarred }),
         ...(isArchived !== undefined && { isArchived }),
+        ...(userId && { updatedBy: userId }),
       },
       include: {
         messages: {

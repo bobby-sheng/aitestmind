@@ -86,6 +86,7 @@ export function BatchSaveDialog({
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
   }>({});
 
   // 新建分类
@@ -320,6 +321,7 @@ export function BatchSaveDialog({
           platform: classification.platform,
           component: classification.component,
           feature: classification.feature,
+          subFeature: classification.subFeature?.trim() || undefined,
           importSource: 'recording',
         };
       });
@@ -551,6 +553,7 @@ export function BatchSaveDialog({
                 value={classification}
                 onChange={setClassification}
                 allowCreate={true}
+                enableSubFeature={true}
               />
             </div>
 
@@ -560,7 +563,7 @@ export function BatchSaveDialog({
               
               {/* 已选择的标签 */}
               {selectedTagObjects.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2 p-2 border rounded-md bg-muted/30">
+                <div className="flex flex-wrap gap-2 mb-2 p-2 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md bg-muted/30">
                   {selectedTagObjects.map((tag) => (
                     <Badge
                       key={tag.id}
@@ -589,7 +592,7 @@ export function BatchSaveDialog({
               />
 
               {/* 标签列表 */}
-              <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+              <div className="max-h-40 overflow-y-auto border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-2">
                 <div className="flex flex-wrap gap-2">
                   {/* 创建/选择标签按钮 */}
                   {canShowCreateButton && (
@@ -631,7 +634,7 @@ export function BatchSaveDialog({
             {/* API列表预览 */}
             <div className="space-y-2">
               <Label>{t('apisToSave', { count: apis.length })}</Label>
-              <div className="max-h-48 overflow-y-auto border rounded-md p-3 space-y-2">
+              <div className="max-h-48 overflow-y-auto border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-3 space-y-2">
                 {apis.map((api, index) => (
                   <div key={index} className="text-sm flex items-start gap-2">
                     <Badge variant="outline" className="text-xs flex-shrink-0 mt-0.5">

@@ -261,7 +261,7 @@ export default function QueryParamsEditor({
                     {row.variable || t('selectVariable', { defaultValue: '选择变量' })}
                   </Button>
                   {showVarSelector === `query-${index}` && (
-                    <div className="absolute top-full left-0 z-50 mt-1 bg-background border rounded-lg shadow-lg p-4">
+                    <div className="absolute top-full left-0 z-50 mt-1 bg-background border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg shadow-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">{t('selectVariable', { defaultValue: '选择变量' })}</span>
                         <Button
@@ -312,7 +312,7 @@ export default function QueryParamsEditor({
         <div className="space-y-2">
           <textarea
             className={cn(
-              'w-full min-h-[200px] p-3 rounded-md border font-mono text-sm',
+              'w-full min-h-[200px] p-3 rounded-md border border-[#e5e7eb] dark:border-[#4b5563] font-mono text-sm',
               'bg-background text-foreground',
               jsonError && 'border-red-500'
             )}

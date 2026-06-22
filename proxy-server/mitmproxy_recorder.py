@@ -40,7 +40,7 @@ class HARRecorderAddon:
         # 使用队列进行线程安全的数据传递
         self.data_queue = queue.Queue()
         
-        logger.info(f"🚀 HAR Recorder 已启动 - Session: {self.session_id}")
+        logger.info(f"HAR Recorder started - Session: {self.session_id}")
     
     def request(self, flow: http.HTTPFlow) -> None:
         """请求开始时记录时间"""
@@ -56,10 +56,13 @@ class HARRecorderAddon:
     
     def response(self, flow: http.HTTPFlow) -> None:
         """响应返回时构建 HAR Entry"""
+        print(f"[Python] response() called: {flow.request.method} {flow.request.pretty_url}", flush=True)
+        
         # 检查暂停/继续状态
         self._check_pause_resume()
         
         if not self.is_recording or self.is_paused:
+            print(f"[Python] Skipped (is_recording={self.is_recording}, is_paused={self.is_paused})", flush=True)
             return
         
         # 检查是否需要清理数据
@@ -82,26 +85,29 @@ class HARRecorderAddon:
                 'total_requests': len(self.har_entries)
             })
             
-            # 💾 实时写入临时文件供 Next.js 读取（跨进程通信）
+            # 实时写入临时文件供 Next.js 读取（跨进程通信）
             try:
                 temp_file = os.path.join(os.path.dirname(__file__), 'mitm_capture_temp.json')
+                print(f"[Python] Writing to temp file: {temp_file}", flush=True)
                 with open(temp_file, 'w', encoding='utf-8') as f:
                     json.dump({
                         'session': self.get_session_info(),
                         'har_data': self.get_har_data(),
                         'total_requests': len(self.har_entries)
                     }, f, ensure_ascii=False)
+                print(f"[Python] Written {len(self.har_entries)} requests to temp file", flush=True)
             except Exception as e:
-                logger.error(f"💾 写入临时文件失败: {str(e)}")
+                print(f"[Python] ERROR writing temp file: {str(e)}", flush=True)
+                logger.error(f"Writing temp file failed: {str(e)}")
             
             # 清理已处理的请求时间记录
             if request_id in self.request_timings:
                 del self.request_timings[request_id]
             
-            logger.info(f"✅ 捕获请求: {flow.request.method} {flow.request.pretty_url} - {flow.response.status_code}")
+            logger.info(f"Captured: {flow.request.method} {flow.request.pretty_url} - {flow.response.status_code}")
         
         except Exception as e:
-            logger.error(f"❌ 处理响应失败: {str(e)}")
+            logger.error(f"Response processing failed: {str(e)}")
     
     def error(self, flow: http.HTTPFlow) -> None:
         """请求失败时记录"""
@@ -117,10 +123,10 @@ class HARRecorderAddon:
             har_entry = self._build_failed_har_entry(flow, start_time, duration)
             self.har_entries.append(har_entry)
             
-            logger.warning(f"⚠️ 请求失败: {flow.request.method} {flow.request.pretty_url}")
+            logger.warning(f"Request failed: {flow.request.method} {flow.request.pretty_url}")
         
         except Exception as e:
-            logger.error(f"❌ 处理错误失败: {str(e)}")
+            logger.error(f"Error processing failed: {str(e)}")
     
     def _build_har_entry(self, flow: http.HTTPFlow, start_time: float, duration: float) -> Dict:
         """构建 HAR Entry 数据结构"""
@@ -273,7 +279,7 @@ class HARRecorderAddon:
                 # 删除标记文件
                 os.remove(clear_marker)
                 
-                logger.info("🗑️ 已清空 mitmproxy 内存数据")
+                logger.info("Cleared mitmproxy memory data")
             except Exception as e:
                 logger.error(f"清理数据时出错: {str(e)}")
     
@@ -286,7 +292,7 @@ class HARRecorderAddon:
         if os.path.exists(pause_marker):
             if not self.is_paused:
                 self.is_paused = True
-                logger.info("⏸️ 录制已暂停")
+                logger.info("Recording paused")
             try:
                 os.remove(pause_marker)
             except:
@@ -296,7 +302,7 @@ class HARRecorderAddon:
         if os.path.exists(resume_marker):
             if self.is_paused:
                 self.is_paused = False
-                logger.info("▶️ 录制已继续")
+                logger.info("Recording resumed")
             try:
                 os.remove(resume_marker)
             except:
@@ -330,12 +336,12 @@ class HARRecorderAddon:
     def pause_recording(self):
         """暂停录制"""
         self.is_paused = True
-        logger.info("⏸️ 录制已暂停")
+        logger.info("Recording paused")
     
     def resume_recording(self):
         """继续录制"""
         self.is_paused = False
-        logger.info("▶️ 录制已继续")
+        logger.info("Recording resumed")
     
     def get_har_data(self) -> Dict:
         """获取完整的 HAR 数据"""
@@ -378,14 +384,18 @@ def get_recorder() -> Optional[HARRecorderAddon]:
 def create_recorder() -> HARRecorderAddon:
     """创建录制器实例"""
     global recorder_addon
+    print("[Python] Creating HARRecorderAddon...", flush=True)
     recorder_addon = HARRecorderAddon()
+    print("[Python] HARRecorderAddon created", flush=True)
     return recorder_addon
 
 
 # mitmproxy 插件入口
+print("[Python] Loading mitmproxy addon...", flush=True)
 addons = [
     create_recorder()
 ]
+print("[Python] Addon loaded successfully", flush=True)
 
 
 if __name__ == "__main__":

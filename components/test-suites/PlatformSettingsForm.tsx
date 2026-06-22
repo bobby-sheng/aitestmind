@@ -4,8 +4,11 @@ import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTranslations } from 'next-intl';
+import { useToast } from '@/hooks/use-toast';
+import { Eye, EyeOff, Copy } from 'lucide-react';
 
 export interface PlatformSettingsFormData {
   // 环境配置
@@ -15,6 +18,11 @@ export interface PlatformSettingsFormData {
   authTokenEnabled: boolean;
   authTokenKey: string;
   authTokenValue: string;
+  tokenLoginApiUrl: string;
+  tokenLoginMethod: string;
+  tokenLoginRequestHeaders: Record<string, string>;
+  tokenLoginRequestBody: Record<string, any>;
+  tokenResponsePath: string;
 
   // Session模式
   sessionEnabled: boolean;
@@ -36,10 +44,12 @@ export function PlatformSettingsForm({
   disabled = false,
 }: PlatformSettingsFormProps) {
   const t = useTranslations('testSuites');
+  const { toast } = useToast();
   const [headers, setHeaders] = useState<string>('{}');
   const [body, setBody] = useState<string>('{}');
   const [headersError, setHeadersError] = useState<string>('');
   const [bodyError, setBodyError] = useState<string>('');
+  const [showTokenValue, setShowTokenValue] = useState(false);
 
   // 初始化JSON字符串
   useEffect(() => {
@@ -78,6 +88,35 @@ export function PlatformSettingsForm({
       updateField('loginRequestBody', parsed);
     } catch (error) {
       setBodyError(t('jsonFormatError'));
+    }
+  };
+
+  const handleCopyToken = () => {
+    if (!value.authTokenValue) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(value.authTokenValue);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = value.authTokenValue;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      toast({
+        title: t('tokenCopySuccess'),
+        variant: 'success',
+        duration: 2000,
+      });
+    } catch {
+      toast({
+        title: t('tokenCopySuccess'),
+        variant: 'destructive',
+        duration: 2000,
+      });
     }
   };
 
@@ -148,16 +187,41 @@ export function PlatformSettingsForm({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="tokenValue">{t('tokenValue')}</Label>
-                <Input
-                  id="tokenValue"
-                  type="password"
-                  placeholder="Bearer your-token-here"
-                  value={value.authTokenValue}
-                  onChange={(e) =>
-                    updateField('authTokenValue', e.target.value)
-                  }
-                  disabled={disabled}
-                />
+                <div className="flex items-center gap-1">
+                  <Input
+                    id="tokenValue"
+                    type={showTokenValue ? 'text' : 'password'}
+                    placeholder="Bearer your-token-here"
+                    value={value.authTokenValue}
+                    onChange={(e) =>
+                      updateField('authTokenValue', e.target.value)
+                    }
+                    disabled={disabled}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => setShowTokenValue(!showTokenValue)}
+                    disabled={disabled}
+                    title={showTokenValue ? t('hideToken') : t('showToken')}
+                  >
+                    {showTokenValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={handleCopyToken}
+                    disabled={disabled || !value.authTokenValue}
+                    title={t('copyToken')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {t('tokenValueHelp')}
                 </p>
@@ -191,7 +255,7 @@ export function PlatformSettingsForm({
           </div>
 
           {value.sessionEnabled && (
-            <div className="max-h-[400px] overflow-y-auto space-y-4 border rounded-md p-4 bg-muted/20">
+            <div className="max-h-[400px] overflow-y-auto space-y-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-4 bg-muted/20">
               <div className="space-y-2">
                 <Label htmlFor="loginApiUrl">{t('loginApiUrl')}</Label>
                 <Input

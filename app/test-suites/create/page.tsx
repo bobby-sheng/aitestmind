@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PlatformSettingsForm, PlatformSettingsFormData } from '@/components/test-suites/PlatformSettingsForm';
@@ -37,6 +38,9 @@ export default function CreateTestSuitePage() {
   
   const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  
+  // 运行模式
+  const [runMode, setRunMode] = useState<'serial' | 'parallel'>('serial');
   
   // 调度配置
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
@@ -80,6 +84,7 @@ export default function CreateTestSuitePage() {
           useGlobalSettings,
           environmentConfig: useGlobalSettings ? null : environmentConfig,
           testCases: testCasesData,
+          runMode,
           executionMode: scheduleEnabled ? 'scheduled' : 'manual',
           scheduleConfig: scheduleEnabled ? scheduleConfig : null,
           scheduleStatus: scheduleEnabled ? 'active' : null,
@@ -210,6 +215,32 @@ export default function CreateTestSuitePage() {
         enabled={scheduleEnabled}
         onEnabledChange={setScheduleEnabled}
       />
+
+      {/* 运行模式 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('runModeTitle')}</CardTitle>
+          <CardDescription>{t('runModeDesc')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup value={runMode} onValueChange={(v) => setRunMode(v as 'serial' | 'parallel')} className="flex gap-6">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="serial" id="runMode-serial" />
+              <Label htmlFor="runMode-serial" className="cursor-pointer">
+                <span className="font-medium">{t('runModeSerial')}</span>
+                <span className="text-xs text-muted-foreground ml-2">{t('runModeSerialDesc')}</span>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="parallel" id="runMode-parallel" />
+              <Label htmlFor="runMode-parallel" className="cursor-pointer">
+                <span className="font-medium">{t('runModeParallel')}</span>
+                <span className="text-xs text-muted-foreground ml-2">{t('runModeParallelDesc')}</span>
+              </Label>
+            </div>
+          </RadioGroup>
+        </CardContent>
+      </Card>
       </div>
     </div>
   );

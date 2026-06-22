@@ -34,12 +34,17 @@ export interface BodyConfig {
   [key: string]: ParamValue | BodyConfig;
 }
 
+// 请求体内容类型
+export type ContentType = 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw' | 'none';
+
 // 请求配置
 export interface RequestConfig {
   pathParams?: PathParams;
   queryParams?: QueryParams;
   headers?: Headers;
   body?: BodyConfig;
+  /** 请求体内容类型，默认为 'json' */
+  contentType?: ContentType;
 }
 
 // 响应提取变量

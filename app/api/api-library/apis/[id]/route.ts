@@ -28,6 +28,8 @@ export async function GET(
             tag: true,
           },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
     });
 
@@ -88,11 +90,14 @@ export async function PUT(
     const {
       name,
       description,
+      method,
+      url,
       path,
       categoryId,
       platform,
       component,
       feature,
+      subFeature,
       tags,
       isStarred,
       isArchived,
@@ -178,6 +183,8 @@ export async function PUT(
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
+    if (method !== undefined) updateData.method = method;
+    if (url !== undefined) updateData.url = url;
     if (path !== undefined) {
       // 自动参数化路径
       const paramResult = parameterizePath(path);
@@ -192,6 +199,7 @@ export async function PUT(
     if (platform !== undefined) updateData.platform = platform || null;
     if (component !== undefined) updateData.component = component || null;
     if (feature !== undefined) updateData.feature = feature || null;
+    if (subFeature !== undefined) updateData.subFeature = subFeature || null;
     if (isStarred !== undefined) updateData.isStarred = isStarred;
     if (isArchived !== undefined) updateData.isArchived = isArchived;
     
@@ -227,13 +235,20 @@ export async function PUT(
         : JSON.stringify(rawHarEntry);
     }
     
+    // 当前用户（更新人）
+    const { getCurrentUser } = await import('@/lib/auth');
+    const currentUser = await getCurrentUser(request);
+    if (currentUser?.user?.id) {
+      updateData.updatedBy = currentUser.user.id;
+    }
+
     // 安全检查：确保 updateData 中只包含 Prisma schema 定义的字段
     const allowedFields = new Set([
-      'name', 'description', 'path', 'categoryId', 'isStarred', 'isArchived',
-      'platform', 'component', 'feature', // 🆕 四层分类字段
+      'name', 'description', 'method', 'url', 'path', 'categoryId', 'isStarred', 'isArchived',
+      'platform', 'component', 'feature', 'subFeature', // 四层分类字段
       'requestHeaders', 'requestQuery', 'requestBody', 'requestMimeType',
       'responseStatus', 'responseHeaders', 'responseBody', 'responseMimeType',
-      'rawHarEntry'
+      'rawHarEntry', 'updatedBy'
     ]);
     
     // 过滤掉不在 schema 中的字段
@@ -279,6 +294,8 @@ export async function PUT(
             tag: true,
           },
         },
+        createdByUser: { select: { id: true, loginName: true } },
+        updatedByUser: { select: { id: true, loginName: true } },
       },
     });
 

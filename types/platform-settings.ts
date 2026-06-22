@@ -11,6 +11,14 @@ export interface PlatformSettings {
   authTokenKey?: string | null;
   authTokenValue?: string | null;
 
+  // Token 自动获取配置
+  tokenLoginApiUrl?: string | null;
+  tokenLoginMethod?: string | null;
+  tokenLoginRequestHeaders?: Record<string, string> | null;
+  tokenLoginRequestBody?: Record<string, any> | null;
+  tokenResponsePath?: string | null;
+  tokenUpdatedAt?: Date | string | null;
+
   // Session模式
   sessionEnabled: boolean;
   loginApiUrl?: string | null;

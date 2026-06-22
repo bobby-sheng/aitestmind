@@ -18,23 +18,23 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
   ),
-  title: "AI TestMind - AI-Powered Visual API Test Orchestration",
+  title: "API 智能测试平台 - AI-Powered Visual API Test Orchestration",
   description: "Think in Flows, Test with Intelligence. AI-powered visual API test platform with drag-and-drop flow builder and intelligent test generation.",
   icons: {
-    icon: '/logo-icon.svg',
-    apple: '/logo-icon.svg',
+    icon: '/1.jpg',
+    apple: '/l.jpg',
   },
   openGraph: {
-    title: 'AI TestMind - AI-Powered Visual API Test Orchestration',
+    title: 'API 智能测试平台 - AI-Powered Visual API Test Orchestration',
     description: 'Think in Flows, Test with Intelligence',
-    images: ['/logo.svg'],
+    images: ['/1.jpg'],
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AI TestMind',
+    title: 'API 智能测试平台',
     description: 'AI-Powered Visual API Test Orchestration',
-    images: ['/logo.svg'],
+    images: ['/1.jpg'],
   },
 };
 

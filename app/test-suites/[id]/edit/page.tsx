@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PlatformSettingsForm, PlatformSettingsFormData } from '@/components/test-suites/PlatformSettingsForm';
@@ -41,6 +42,11 @@ export default function EditTestSuitePage() {
   });
   
   const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
+  const [suiteCreatedBy, setSuiteCreatedBy] = useState<string | null>(null);
+  const [suiteUpdatedBy, setSuiteUpdatedBy] = useState<string | null>(null);
+  
+  // 运行模式
+  const [runMode, setRunMode] = useState<'serial' | 'parallel'>('serial');
   
   // 调度配置
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
@@ -92,6 +98,11 @@ export default function EditTestSuitePage() {
           setSelectedCases(new Set(caseIds));
         }
         
+        // 加载运行模式
+        if (suite.runMode) {
+          setRunMode(suite.runMode);
+        }
+        
         // 加载调度配置
         if (suite.executionMode === 'scheduled') {
           setScheduleEnabled(true);
@@ -106,6 +117,8 @@ export default function EditTestSuitePage() {
             }
           }
         }
+        setSuiteCreatedBy(suite.createdByUser?.loginName ?? null);
+        setSuiteUpdatedBy(suite.updatedByUser?.loginName ?? null);
       } else {
         throw new Error(result.error);
       }
@@ -159,6 +172,7 @@ export default function EditTestSuitePage() {
           useGlobalSettings,
           environmentConfig: useGlobalSettings ? null : environmentConfig,
           testCases: testCasesData,
+          runMode,
           executionMode: scheduleEnabled ? 'scheduled' : 'manual',
           scheduleConfig: scheduleEnabled ? scheduleConfig : null,
           scheduleStatus: scheduleEnabled ? 'active' : null,
@@ -239,6 +253,12 @@ export default function EditTestSuitePage() {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+            {(suiteCreatedBy || suiteUpdatedBy) && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2 border-t pt-4">
+                {suiteCreatedBy && <span>{tCommon('createdBy')}: {suiteCreatedBy}</span>}
+                {suiteUpdatedBy && <span>{tCommon('updatedBy')}: {suiteUpdatedBy}</span>}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -297,6 +317,32 @@ export default function EditTestSuitePage() {
           enabled={scheduleEnabled}
           onEnabledChange={setScheduleEnabled}
         />
+
+        {/* 运行模式 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('runModeTitle')}</CardTitle>
+            <CardDescription>{t('runModeDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup value={runMode} onValueChange={(v) => setRunMode(v as 'serial' | 'parallel')} className="flex gap-6">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="serial" id="runMode-serial" />
+                <Label htmlFor="runMode-serial" className="cursor-pointer">
+                  <span className="font-medium">{t('runModeSerial')}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{t('runModeSerialDesc')}</span>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="parallel" id="runMode-parallel" />
+                <Label htmlFor="runMode-parallel" className="cursor-pointer">
+                  <span className="font-medium">{t('runModeParallel')}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{t('runModeParallelDesc')}</span>
+                </Label>
+              </div>
+            </RadioGroup>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

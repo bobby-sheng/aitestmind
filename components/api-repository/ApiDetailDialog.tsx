@@ -312,7 +312,7 @@ export function ApiDetailDialog({
       return (
         <div className="space-y-2">
           <textarea
-            className="w-full min-h-[300px] p-4 rounded-md bg-muted text-foreground text-sm font-mono border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full min-h-[300px] p-4 rounded-md bg-muted text-foreground text-sm font-mono border border-[#e5e7eb] dark:border-[#4b5563] focus:outline-none focus:ring-2 focus:ring-primary"
             value={editMode.value}
             onChange={(e) => setEditMode({ ...editMode, value: e.target.value })}
             placeholder="请输入 JSON 格式数据"
@@ -346,9 +346,9 @@ export function ApiDetailDialog({
     // 如果没有数据，显示占位
     if (!data) {
       return (
-        <div className="border border-border rounded-lg bg-card overflow-hidden flex flex-col">
+        <div className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg bg-card overflow-hidden flex flex-col">
           {/* 操作按钮条 */}
-          <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border">
+          <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-[#e5e7eb] dark:border-[#4b5563]">
             <div className="text-xs font-semibold">
               {title || 'JSON 数据'}
             </div>
@@ -515,6 +515,12 @@ export function ApiDetailDialog({
                 </Badge>
                 <DialogTitle className="text-xl">{api.name}</DialogTitle>
               </div>
+              {(api.createdByUser || api.updatedByUser) && (
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {api.createdByUser && <span>{tCommon('createdBy')}: {api.createdByUser.loginName}</span>}
+                  {api.updatedByUser && <span>{tCommon('updatedBy')}: {api.updatedByUser.username || api.updatedByUser.loginName}</span>}
+                </div>
+              )}
               <div className="text-sm text-muted-foreground space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs">URL:</span>
@@ -726,14 +732,14 @@ export function ApiDetailDialog({
         </div>
 
         {/* 详细信息 - 水平标签页布局 */}
-        <div className="mt-4 border rounded-lg overflow-hidden">
+        <div className="mt-4 border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg overflow-hidden">
           <Tabs defaultValue="request" className="w-full" onValueChange={(value) => {
             if (value === 'raw') {
               loadRawHarIfNeeded();
             }
           }}>
             {/* 顶部导航 */}
-            <div className="bg-muted/30 border-b border-border">
+            <div className="bg-muted/30 border-b border-[#e5e7eb] dark:border-[#4b5563]">
               <TabsList className="w-full h-auto bg-transparent p-0 rounded-none justify-start">
                 <TabsTrigger 
                   value="request" 
@@ -793,14 +799,14 @@ export function ApiDetailDialog({
 
                 <TabsContent value="response" className="m-0 p-6 space-y-6">
                   {/* 状态信息卡片 */}
-                  <div className="bg-card rounded-lg border border-border shadow-sm">
+                  <div className="bg-card rounded-lg border border-[#e5e7eb] dark:border-[#4b5563] shadow-sm">
                     <div className="p-5">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="h-8 w-1 bg-primary rounded-full" />
                         <h4 className="text-lg font-semibold">{t('statusInfo')}</h4>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-card rounded-lg p-4 border border-border">
+                        <div className="bg-card rounded-lg p-4 border border-[#e5e7eb] dark:border-[#4b5563]">
                           <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">{t('statusCode')}</div>
                           <Badge 
                             variant={api.responseStatus >= 200 && api.responseStatus < 300 ? "default" : "destructive"}
@@ -810,13 +816,13 @@ export function ApiDetailDialog({
                           </Badge>
                         </div>
                         {api.responseTime && (
-                          <div className="bg-card rounded-lg p-4 border border-border">
+                          <div className="bg-card rounded-lg p-4 border border-[#e5e7eb] dark:border-[#4b5563]">
                             <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">{t('responseTime')}</div>
                             <div className="text-xl font-bold">{api.responseTime}<span className="text-sm font-normal text-muted-foreground ml-1">ms</span></div>
                           </div>
                         )}
                         {api.responseSize && (
-                          <div className="bg-card rounded-lg p-4 border border-border">
+                          <div className="bg-card rounded-lg p-4 border border-[#e5e7eb] dark:border-[#4b5563]">
                             <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">{t('responseSize')}</div>
                             <div className="text-xl font-bold">{(api.responseSize / 1024).toFixed(2)}<span className="text-sm font-normal text-muted-foreground ml-1">KB</span></div>
                           </div>
@@ -881,7 +887,7 @@ export function ApiDetailDialog({
                       // 编辑模式
                       <div className="p-6 bg-card">
                         <textarea
-                          className="w-full min-h-[400px] p-4 rounded-md bg-muted text-foreground text-sm font-mono border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                          className="w-full min-h-[400px] p-4 rounded-md bg-muted text-foreground text-sm font-mono border border-[#e5e7eb] dark:border-[#4b5563] focus:outline-none focus:ring-2 focus:ring-primary"
                           value={editMode.value}
                           onChange={(e) => setEditMode({ ...editMode, value: e.target.value })}
                           placeholder={t('enterJsonPlaceholder')}
@@ -971,7 +977,7 @@ export function ApiDetailDialog({
                       {t('harDescription')}
                     </p>
                     {loadingRawHar ? (
-                      <div className="flex items-center justify-center py-12 border border-border rounded-lg bg-muted/30">
+                      <div className="flex items-center justify-center py-12 border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg bg-muted/30">
                         <div className="text-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
                           <p className="text-sm text-muted-foreground">{t('loadingRawData')}</p>

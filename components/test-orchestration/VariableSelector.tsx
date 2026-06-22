@@ -63,6 +63,8 @@ export default function VariableSelector({
 
               newCache[nodeData.apiId] = {
                 ...apiData,
+                requestQuery: parseJsonField(apiData.requestQuery),
+                requestBody: parseJsonField(apiData.requestBody),
                 responseBody: parseJsonField(apiData.responseBody),
               };
             }
@@ -131,7 +133,7 @@ export default function VariableSelector({
   };
 
   return (
-    <div className="border rounded-md p-3 space-y-2 max-h-60 overflow-y-auto">
+    <div className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-md p-3 space-y-2 max-h-60 overflow-y-auto bg-background">
       {availableNodes.length === 0 ? (
         <div className="text-sm text-muted-foreground text-center py-4">
           暂无可用变量
@@ -146,35 +148,58 @@ export default function VariableSelector({
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-start h-auto py-2"
+                className="w-full justify-start h-auto py-2 hover:bg-muted/50"
                 onClick={() => toggleNode(node.id)}
               >
                 {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 mr-1" />
+                  <ChevronDown className="h-4 w-4 mr-1 flex-shrink-0" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 mr-1" />
+                  <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0" />
                 )}
-                <span className="font-medium">{node.id}</span>
-                <span className="ml-2 text-xs text-muted-foreground">
+                <span className="font-medium text-sm">{node.id}</span>
+                <span className="ml-2 text-xs text-muted-foreground truncate">
                   {nodeData.method} {nodeData.url}
                 </span>
               </Button>
 
-              {isExpanded && (
+              {isExpanded && (() => {
+                const apiInfo = apiInfoCache[nodeData.apiId];
+
+                // 请求参数键：优先使用已配置的，兜底从API定义获取
+                const pathParamKeys = (() => {
+                  const configured = nodeData.requestConfig?.pathParams;
+                  if (configured && Object.keys(configured).length > 0) return Object.keys(configured);
+                  if (!apiInfo?.path) return [];
+                  const matches = apiInfo.path.match(/\{(\w+)\}/g);
+                  return matches ? matches.map((m: string) => m.slice(1, -1)) : [];
+                })();
+                const queryParamKeys = (() => {
+                  const configured = nodeData.requestConfig?.queryParams;
+                  if (configured && Object.keys(configured).length > 0) return Object.keys(configured);
+                  return Object.keys(apiInfo?.requestQuery || {});
+                })();
+                const bodyKeys = (() => {
+                  const configured = nodeData.requestConfig?.body;
+                  if (configured && Object.keys(configured).length > 0) return Object.keys(configured);
+                  return Object.keys(apiInfo?.requestBody || {});
+                })();
+                const hasRequestParams = pathParamKeys.length > 0 || queryParamKeys.length > 0 || bodyKeys.length > 0;
+
+                return (
                 <div className="ml-6 space-y-1">
                   {/* 请求参数 */}
-                  <div className="text-xs font-semibold text-muted-foreground mt-2">
-                    📥 请求参数
-                  </div>
-                  <div className="ml-2 space-y-0.5">
-                    {nodeData.requestConfig?.pathParams &&
-                      Object.keys(nodeData.requestConfig.pathParams).map(
-                        (key) => (
+                  {hasRequestParams && (
+                    <>
+                      <div className="text-xs font-semibold text-muted-foreground mt-2 mb-1 px-1">
+                        📥 请求参数
+                      </div>
+                      <div className="ml-2 space-y-0.5">
+                        {pathParamKeys.map((key) => (
                           <Button
                             key={`path-${key}`}
                             variant="ghost"
                             size="sm"
-                            className="w-full justify-start h-7 text-xs"
+                            className="w-full justify-start h-8 text-xs hover:bg-muted/50 px-2"
                             onClick={() =>
                               handleSelect(
                                 buildVariablePath(
@@ -185,44 +210,38 @@ export default function VariableSelector({
                               )
                             }
                           >
-                            <code className="text-xs">
+                            <code className="text-xs font-mono text-foreground break-all text-left">
                               pathParams.{key}
                             </code>
                           </Button>
-                        )
-                      )}
-                    {nodeData.requestConfig?.queryParams &&
-                      Object.keys(nodeData.requestConfig.queryParams).map(
-                        (key) => (
+                        ))}
+                        {queryParamKeys.map((key) => (
                           <Button
                             key={`query-${key}`}
                             variant="ghost"
                             size="sm"
-                            className="w-full justify-start h-7 text-xs"
+                            className="w-full justify-start h-8 text-xs hover:bg-muted/50 px-2"
                             onClick={() =>
                               handleSelect(
                                 buildVariablePath(
                                   node.id,
-                                  'request.queryParams',
+                                  'request.params',
                                   key
                                 )
                               )
                             }
                           >
-                            <code className="text-xs">
+                            <code className="text-xs font-mono text-foreground break-all text-left">
                               queryParams.{key}
                             </code>
                           </Button>
-                        )
-                      )}
-                    {nodeData.requestConfig?.body &&
-                      Object.keys(nodeData.requestConfig.body).map(
-                        (key) => (
+                        ))}
+                        {bodyKeys.map((key) => (
                           <Button
                             key={`body-${key}`}
                             variant="ghost"
                             size="sm"
-                            className="w-full justify-start h-7 text-xs"
+                            className="w-full justify-start h-8 text-xs hover:bg-muted/50 px-2"
                             onClick={() =>
                               handleSelect(
                                 buildVariablePath(
@@ -233,74 +252,71 @@ export default function VariableSelector({
                               )
                             }
                           >
-                            <code className="text-xs">
+                            <code className="text-xs font-mono text-foreground break-all text-left">
                               body.{key}
                             </code>
                           </Button>
-                        )
-                      )}
-                  </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
 
                   {/* 响应参数 */}
-                  <div className="text-xs font-semibold text-muted-foreground mt-2">
+                  <div className="text-xs font-semibold text-muted-foreground mt-3 mb-1 px-1">
                     📤 响应参数
                   </div>
                   <div className="ml-2 space-y-0.5">
                     {/* 从 API 库中获取的响应字段 */}
-                    {(() => {
-                      const apiInfo = apiInfoCache[nodeData.apiId];
-                      if (apiInfo?.responseBody) {
-                        const fields = parseResponseFields(apiInfo.responseBody);
-                        return fields.map((fieldPath) => (
-                          <Button
-                            key={`response-${fieldPath}`}
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-7 text-xs"
-                            onClick={() =>
-                              handleSelect(
-                                buildVariablePath(
-                                  node.id,
-                                  'response',
-                                  fieldPath
-                                )
+                    {apiInfo?.responseBody ? (
+                      parseResponseFields(apiInfo.responseBody).map((fieldPath) => (
+                        <Button
+                          key={`response-${fieldPath}`}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start h-8 text-xs hover:bg-muted/50 px-2"
+                          onClick={() =>
+                            handleSelect(
+                              buildVariablePath(
+                                node.id,
+                                'response',
+                                fieldPath
                               )
-                            }
-                          >
-                            <code className="text-xs">
-                              response.{fieldPath}
-                            </code>
-                          </Button>
-                        ));
-                      }
-                      return null;
-                    })()}
-                    
+                            )
+                          }
+                        >
+                          <code className="text-xs font-mono text-foreground break-all text-left">
+                            response.{fieldPath}
+                          </code>
+                        </Button>
+                      ))
+                    ) : null}
+
                     {/* 始终显示 HTTP 状态码 */}
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="w-full justify-start h-7 text-xs border-t mt-1 pt-1"
+                      className="w-full justify-start h-8 text-xs border-t border-[#e5e7eb] dark:border-[#4b5563] mt-1 pt-1 hover:bg-muted/50 px-2"
                       onClick={() =>
                         handleSelect(
                           buildVariablePath(node.id, 'response', 'status')
                         )
                       }
                     >
-                      <code className="text-xs text-muted-foreground">response.status (HTTP)</code>
+                      <code className="text-xs font-mono text-muted-foreground">response.status (HTTP)</code>
                     </Button>
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           );
         })
       )}
 
       {value && (
-        <div className="mt-2 p-2 bg-muted rounded text-xs">
+        <div className="mt-2 p-2 bg-muted rounded text-xs border border-[#e5e7eb] dark:border-[#4b5563]">
           <span className="text-muted-foreground">已选择：</span>
-          <code className="ml-1 font-mono">{value}</code>
+          <code className="ml-1 font-mono text-foreground break-all">{value}</code>
         </div>
       )}
     </div>

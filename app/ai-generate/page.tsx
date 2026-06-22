@@ -20,8 +20,15 @@ export default function AIGeneratePage() {
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [conversationNeedsRefresh, setConversationNeedsRefresh] = useState(0); // 用于触发对话列表刷新
+  const [currentConversationMeta, setCurrentConversationMeta] = useState<{ title?: string; createdByUser?: { username: string }; updatedByUser?: { username: string } } | null>(null);
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 带认证的请求头（与登录态一致：后端优先读 Authorization）
+  const authHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   // 监听页面刷新/关闭事件 - 当AI正在生成时阻止用户离开
   useEffect(() => {
@@ -43,7 +50,7 @@ export default function AIGeneratePage() {
   // 加载对话消息
   const loadMessages = async (conversationId: string) => {
     try {
-      const res = await fetch(`/api/conversations/${conversationId}/messages`);
+      const res = await fetch(`/api/conversations/${conversationId}/messages`, { headers: authHeaders() });
       const data = await res.json();
       if (data.success) {
         // 解析消息，将 metadata.blocks 提取到 message.blocks
@@ -68,10 +75,31 @@ export default function AIGeneratePage() {
     }
   };
 
+  // 加载对话详情（用于展示创建人/更新人）
+  const loadConversationDetail = async (id: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setCurrentConversationMeta({
+          title: data.data.title,
+          createdByUser: data.data.createdByUser,
+          updatedByUser: data.data.updatedByUser,
+        });
+      } else {
+        setCurrentConversationMeta(null);
+      }
+    } catch {
+      setCurrentConversationMeta(null);
+    }
+  };
+
   // 选择对话
   const handleSelectConversation = async (id: string) => {
     setCurrentConversationId(id);
+    setCurrentConversationMeta(null);
     await loadMessages(id);
+    if (id) loadConversationDetail(id);
     setIsSidebarOpen(false);
   };
 
@@ -81,7 +109,7 @@ export default function AIGeneratePage() {
       // 立即创建数据库记录，这样左侧会显示"新对话"
       const res = await fetch('/api/conversations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           title: t('newConversation'),
         }),
@@ -91,6 +119,7 @@ export default function AIGeneratePage() {
       if (data.success) {
         setCurrentConversationId(data.data.id);
         setMessages([]);
+        setCurrentConversationMeta(data.data.createdByUser || data.data.updatedByUser ? { title: data.data.title, createdByUser: data.data.createdByUser, updatedByUser: data.data.updatedByUser } : null);
         setIsSidebarOpen(false);
         setConversationNeedsRefresh(prev => prev + 1); // 触发列表刷新
       }
@@ -109,6 +138,7 @@ export default function AIGeneratePage() {
     if (id === currentConversationId) {
       setCurrentConversationId(null);
       setMessages([]);
+      setCurrentConversationMeta(null);
     }
     setConversationNeedsRefresh(prev => prev + 1); // 触发列表刷新
     toast({
@@ -156,7 +186,7 @@ export default function AIGeneratePage() {
       if (!conversationId) {
         const createRes = await fetch('/api/conversations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({
             title: content.slice(0, 50) + (content.length > 50 ? '...' : ''),
           }),
@@ -187,7 +217,7 @@ export default function AIGeneratePage() {
       // 保存用户消息到数据库
       await fetch(`/api/conversations/${conversationId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           role: 'user',
           content,
@@ -209,7 +239,7 @@ export default function AIGeneratePage() {
       // 调用SSE流式API
       const response = await fetch('/api/ai/smart-generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ 
           userInput: content,
           testType 
@@ -372,7 +402,7 @@ export default function AIGeneratePage() {
       // 保存AI回复到数据库
       await fetch(`/api/conversations/${conversationId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
         role: 'assistant',
           content: fullContent,
@@ -384,7 +414,7 @@ export default function AIGeneratePage() {
       if (isNewConversation || messages.length === 0) {
         await fetch(`/api/conversations/${conversationId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({
             title: content.slice(0, 30) + (content.length > 30 ? '...' : ''),
           }),
@@ -438,7 +468,7 @@ export default function AIGeneratePage() {
         if (conversationId && stoppedContent) {
           fetch(`/api/conversations/${conversationId}/messages`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({
               role: 'assistant',
               content: stoppedContent,
@@ -473,7 +503,7 @@ export default function AIGeneratePage() {
   return (
     <div className="h-full flex bg-background">
       {/* 左侧边栏 - 桌面端 */}
-      <div className="hidden lg:block w-80 h-full border-r border-border">
+      <div className="hidden lg:block w-80 h-full border-r border-[#e5e7eb] dark:border-[#4b5563]">
         <ConversationList
           key={conversationNeedsRefresh} // 使用key强制刷新
           currentConversationId={currentConversationId}
@@ -501,7 +531,7 @@ export default function AIGeneratePage() {
       {/* 右侧主区域 */}
       <div className="flex-1 flex flex-col h-full bg-card">
         {/* 顶部栏（仅移动端显示菜单按钮） */}
-        <div className="border-b border-border bg-card px-6 py-3 flex items-center gap-3 lg:hidden">
+        <div className="border-b border-border bg-card px-4 py-2.5 flex items-center gap-3 lg:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -514,7 +544,7 @@ export default function AIGeneratePage() {
 
         {/* AI生成中的警告提示 */}
         {loading && (
-          <Alert className="m-4 border-orange-600 bg-orange-100 dark:bg-orange-900/40 dark:border-orange-500 animate-pulse">
+          <Alert className="mx-4 mt-3 mb-2 border-orange-600 bg-orange-100 dark:bg-orange-900/40 dark:border-orange-500 animate-pulse">
             <AlertTriangle className="h-5 w-5 text-orange-700 dark:text-orange-300" />
             <AlertDescription className="text-orange-950 dark:text-orange-50 font-semibold ml-2">
               ⚠️ {t('generatingAlert')}

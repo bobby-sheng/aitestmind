@@ -33,6 +33,7 @@ interface Api {
   platform?: string;
   component?: string;
   feature?: string;
+  subFeature?: string;
   isStarred?: boolean;
 }
 
@@ -50,12 +51,14 @@ interface FourLayerTreeProps {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
     isStarred?: boolean;
   };
   onFilterChange: (filter: {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
     isStarred?: boolean;
   }) => void;
   onCreateCategory?: (node?: TreeNode) => void;
@@ -64,7 +67,7 @@ interface FourLayerTreeProps {
 }
 
 interface TreeNode {
-  type: 'platform' | 'component' | 'feature';
+  type: 'platform' | 'component' | 'feature' | 'subFeature';
   name: string;
   count: number;
   children?: TreeNode[];
@@ -72,8 +75,19 @@ interface TreeNode {
     platform?: string;
     component?: string;
     feature?: string;
+    subFeature?: string;
   };
 }
+
+// 提取「父功能 > 子功能」路径中的最后一段名称，用于展示
+const getLeafName = (value: string) => {
+  if (!value) return value;
+  const segments = value
+    .split('>')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return segments.length > 0 ? segments[segments.length - 1] : value;
+};
 
 export function FourLayerTree({ 
   apis, 
@@ -131,30 +145,62 @@ export function FourLayerTree({
           platformNode.children!.push(componentNode);
         }
 
-        // 如果有 feature，创建功能节点
+        // 如果有 feature，创建功能 / 子功能层级节点
         if (feature) {
-          let featureNode = componentNode.children?.find(
-            (n) => n.name === feature && n.type === 'feature'
-          );
-          if (!featureNode) {
-            featureNode = {
-              type: 'feature',
-              name: feature,
-              count: 0,
-              fullPath: { platform, component, feature },
-            };
-            componentNode.children!.push(featureNode);
+          // 支持“父功能 > 子功能 > ...”形式的多级编码
+          const segments = feature
+            .split('>')
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+          if (segments.length === 0) {
+            return;
           }
+
+          let currentParent: TreeNode = componentNode;
+
+          segments.forEach((segmentName, index) => {
+            const isRootFeature = index === 0;
+            const type: TreeNode['type'] = isRootFeature ? 'feature' : 'subFeature';
+
+            let existingNode =
+              currentParent.children?.find(
+                (n) => n.name === segmentName && n.type === type
+              ) || null;
+
+            if (!existingNode) {
+              existingNode = {
+                type,
+                name: segmentName,
+                count: 0,
+                children: [],
+                fullPath: {
+                  platform,
+                  component,
+                  // 与数据库保持一致：feature 始终是“父功能”，subFeature 为第4层名称
+                  feature: segments[0],
+                  subFeature: type === 'subFeature' ? segmentName : undefined,
+                },
+              };
+              if (!currentParent.children) {
+                currentParent.children = [];
+              }
+              currentParent.children.push(existingNode);
+            }
+
+            currentParent = existingNode;
+          });
         }
       }
     });
 
     // 📌 步骤2：从 APIs 统计数量并补充未预定义的分类
     for (const api of apis) {
-      // 如果没有 platform，使用默认分类
+      // 如果没有 platform/component/feature，使用默认分类
       const platform = api.platform || DEFAULT_PLATFORM;
       const component = api.component || DEFAULT_COMPONENT;
       const feature = api.feature || DEFAULT_FEATURE;
+      const subFeature = api.subFeature || null;
 
       // 获取或创建平台节点
       if (!platformMap.has(platform)) {
@@ -196,19 +242,44 @@ export function FourLayerTree({
           type: 'feature',
           name: feature,
           count: 0,
+          children: [],
           fullPath: { platform, component, feature },
         };
         componentNode.children!.push(featureNode);
       }
       featureNode.count++;
+
+      // 处理子功能层（第4层，可选）
+      if (subFeature) {
+        let subFeatureNode = featureNode.children?.find(
+          (n) => n.name === subFeature && n.type === 'subFeature'
+        );
+        if (!subFeatureNode) {
+          subFeatureNode = {
+            type: 'subFeature',
+            name: subFeature,
+            count: 0,
+            fullPath: { platform, component, feature, subFeature },
+          };
+          if (!featureNode.children) {
+            featureNode.children = [];
+          }
+          featureNode.children.push(subFeatureNode);
+        }
+        subFeatureNode.count++;
+      }
     }
 
-    // 排序
+    // 排序（包括第4层子功能）
     tree.sort((a, b) => a.name.localeCompare(b.name));
     tree.forEach((platform) => {
       platform.children?.sort((a, b) => a.name.localeCompare(b.name));
       platform.children?.forEach((component) => {
         component.children?.sort((a, b) => a.name.localeCompare(b.name));
+        // 对功能下的子功能也进行排序
+        component.children?.forEach((feature) => {
+          feature.children?.sort((a, b) => a.name.localeCompare(b.name));
+        });
       });
     });
 
@@ -256,8 +327,8 @@ export function FourLayerTree({
 
   // 生成节点唯一键
   const getNodeKey = (node: TreeNode): string => {
-    const { platform, component, feature } = node.fullPath;
-    return [platform, component, feature].filter(Boolean).join('/');
+    const { platform, component, feature, subFeature } = node.fullPath;
+    return [platform, component, feature, subFeature].filter(Boolean).join('/');
   };
 
   // 检查节点是否选中
@@ -266,17 +337,19 @@ export function FourLayerTree({
     const DEFAULT_COMPONENT = t('defaultComponent');
     const DEFAULT_FEATURE = t('defaultFeature');
     
-    const { platform, component, feature } = node.fullPath;
+    const { platform, component, feature, subFeature } = node.fullPath;
     
     // 将默认分类文本转换为 "__NULL__" 进行比较
     const nodePlatform = platform === DEFAULT_PLATFORM ? '__NULL__' : platform;
     const nodeComponent = component === DEFAULT_COMPONENT ? '__NULL__' : component;
     const nodeFeature = feature === DEFAULT_FEATURE ? '__NULL__' : feature;
+    const nodeSubFeature = subFeature;
     
     return (
       selectedFilter.platform === nodePlatform &&
       selectedFilter.component === nodeComponent &&
-      selectedFilter.feature === nodeFeature
+      selectedFilter.feature === nodeFeature &&
+      selectedFilter.subFeature === nodeSubFeature
     );
   };
 
@@ -295,6 +368,8 @@ export function FourLayerTree({
         platform: node.fullPath.platform === DEFAULT_PLATFORM ? '__NULL__' : node.fullPath.platform,
         component: node.fullPath.component === DEFAULT_COMPONENT ? '__NULL__' : node.fullPath.component,
         feature: node.fullPath.feature === DEFAULT_FEATURE ? '__NULL__' : node.fullPath.feature,
+        // subFeature 没有默认值，直接使用实际值
+        subFeature: node.fullPath.subFeature,
       };
       
       onFilterChange(filterValue);
@@ -313,7 +388,9 @@ export function FourLayerTree({
         ? Layers
         : node.type === 'component'
         ? Box
-        : Grid;
+        : node.type === 'feature'
+        ? Grid
+        : FileText; // subFeature 使用 FileText 图标
 
     return (
       <div key={nodeKey}>
@@ -350,13 +427,20 @@ export function FourLayerTree({
           <Icon className="h-4 w-4 flex-shrink-0" />
 
           {/* 名称 */}
-          <span className="truncate max-w-[100px]">{node.name}</span>
+          <span
+            className="truncate max-w-[100px]"
+            title={node.name}
+          >
+            {node.type === 'platform' || node.type === 'component'
+              ? node.name
+              : getLeafName(node.name)}
+          </span>
 
           {/* 操作按钮 - 紧跟名称 */}
           {(onCreateCategory || onEditCategory || onDeleteCategory) && (
             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-              {/* 添加子分类按钮 - 只在平台和组件层级显示 */}
-              {onCreateCategory && (node.type === 'platform' || node.type === 'component') && (
+              {/* 添加子分类按钮 - 平台/组件/功能层级显示 */}
+              {onCreateCategory && (node.type === 'platform' || node.type === 'component' || node.type === 'feature') && (
                 <button
                   className={cn(
                     "p-0.5 rounded hover:scale-110 transition-all",
@@ -410,10 +494,10 @@ export function FourLayerTree({
             </div>
           )}
 
-          {/* 计数徽章 - 放在最右边 */}
+          {/* 计数徽章 - 放在最右边，并预留与滚动条的间距 */}
           <Badge
             variant={isSelected ? 'secondary' : 'outline'}
-            className="text-xs ml-auto flex-shrink-0"
+            className="text-xs ml-auto mr-2 flex-shrink-0"
           >
             {node.count}
           </Badge>
@@ -430,9 +514,9 @@ export function FourLayerTree({
   };
 
   return (
-    <div className="h-full flex flex-col border-r bg-muted/10 overflow-visible">
+    <div className="h-full flex flex-col border-r border-[#e5e7eb] dark:border-[#4b5563] bg-muted/10 overflow-visible">
       {/* 头部 */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b border-[#e5e7eb] dark:border-[#4b5563]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-lg">{t('title')}</h3>
           {onCreateCategory && (
@@ -461,7 +545,11 @@ export function FourLayerTree({
             onClick={() => onFilterChange({})}
             className={cn(
               'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors',
-              !selectedFilter.platform && !selectedFilter.component && !selectedFilter.feature && !selectedFilter.isStarred
+              !selectedFilter.platform &&
+                !selectedFilter.component &&
+                !selectedFilter.feature &&
+                !selectedFilter.subFeature &&
+                !selectedFilter.isStarred
                 ? 'bg-primary text-primary-foreground'
                 : 'hover:bg-muted'
             )}
@@ -472,7 +560,11 @@ export function FourLayerTree({
             </div>
             <Badge
               variant={
-                !selectedFilter.platform && !selectedFilter.component && !selectedFilter.feature && !selectedFilter.isStarred
+                !selectedFilter.platform &&
+                !selectedFilter.component &&
+                !selectedFilter.feature &&
+                !selectedFilter.subFeature &&
+                !selectedFilter.isStarred
                   ? 'secondary'
                   : 'outline'
               }
@@ -505,7 +597,8 @@ export function FourLayerTree({
 
       {/* 树形列表 */}
       <ScrollArea className="flex-1">
-        <div className="p-2 pr-1 space-y-1">
+        {/* 右侧增加更大的 padding，避免计数徽章与滚动条重叠 */}
+        <div className="p-2 pr-8 space-y-1">
           {treeData.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
               <p>{t('noClassification')}</p>

@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
@@ -16,11 +15,17 @@ import {
 import { useTranslations } from "next-intl"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
+import { useTabs } from "@/contexts/tabs-context"
 
-export function Sidebar() {
+interface SidebarProps {
+  isCollapsed?: boolean
+}
+
+export function Sidebar({ isCollapsed = false }: SidebarProps) {
   const pathname = usePathname()
   const t = useTranslations('sidebar')
   const nav = useTranslations('nav')
+  const { addTab } = useTabs()
   
   const routes = [
     {
@@ -79,17 +84,45 @@ export function Sidebar() {
     },
   ]
 
+  const handleMenuClick = (e: React.MouseEvent, route: typeof routes[0]) => {
+    e.preventDefault()
+    addTab({
+      path: route.href,
+      title: t(route.labelKey as any),
+      labelKey: route.labelKey,
+      closable: true,
+      pinned: false,
+    })
+  }
+
   return (
-    <div className="space-y-4 py-4 flex flex-col h-full bg-card border-r">
+    <div className="space-y-4 py-4 flex flex-col h-full bg-card border-r border-[#e5e7eb] dark:border-[#4b5563]">
       <div className="px-3 py-2 flex-1">
-        <Link href="/api-capture" className="flex items-center pl-3 mb-14 group">
-          <div className="relative h-11 w-11 mr-3 flex-shrink-0">
-            {/* AI TestMind Logo with hover effect */}
+        <a
+          href="/dashboard"
+          onClick={(e) => {
+            e.preventDefault()
+            addTab({
+              path: "/dashboard",
+              title: t("dashboard"),
+              labelKey: "dashboard",
+              closable: true,
+              pinned: false,
+            })
+          }}
+          className={cn(
+            "flex items-center group transition-all mb-14 cursor-pointer",
+            isCollapsed ? "justify-center px-0" : "pl-3"
+          )}
+          title={isCollapsed ? nav('platformTitle') : undefined}
+        >
+          <div className="relative h-11 w-11 flex-shrink-0">
+            {/* API 智能测试平台 Logo with hover effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-600 rounded-xl opacity-0 group-hover:opacity-20 blur-lg transition-all duration-300" />
             <div className="relative group-hover:scale-110 transition-transform duration-300">
               <Image 
-                src="/logo-icon.svg" 
-                alt="AI TestMind" 
+                src="/3.jpg" 
+                alt={nav('platformTitle')} 
                 width={44}
                 height={44}
                 priority
@@ -97,38 +130,49 @@ export function Sidebar() {
               />
             </div>
           </div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent group-hover:from-purple-500 group-hover:via-blue-500 group-hover:to-cyan-500 transition-all">
-            {nav('platformTitle')}
-          </h1>
-        </Link>
+          {!isCollapsed && (
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent group-hover:from-purple-500 group-hover:via-blue-500 group-hover:to-cyan-500 transition-all ml-3">
+              {nav('platformTitle')}
+            </h1>
+          )}
+        </a>
         <div className="space-y-1">
           {routes.map((route) => {
             const isActive = pathname === route.href;
             return (
-              <Link
+              <a
                 key={route.href}
                 href={route.href}
+                onClick={(e) => handleMenuClick(e, route)}
                 className={cn(
-                  "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer rounded-lg transition-all relative",
+                  "text-[15px] group flex p-3 w-full font-medium cursor-pointer rounded-lg transition-all relative",
+                  isCollapsed ? "justify-center" : "justify-start",
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )}
+                title={isCollapsed ? t(route.labelKey as any) : undefined}
               >
                 {/* 左侧高亮条 */}
                 {isActive && (
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r-full" />
                 )}
-                <div className="flex items-center flex-1">
+                <div className={cn(
+                  "flex items-center flex-1",
+                  isCollapsed ? "justify-center" : ""
+                )}>
                   <route.icon 
                     className={cn(
-                      "h-5 w-5 mr-3 transition-colors",
+                      "h-5 w-5 transition-colors flex-shrink-0",
+                      isCollapsed ? "" : "mr-3",
                       isActive ? route.color : "opacity-60"
                     )} 
                   />
-                  {t(route.labelKey as any)}
+                  {!isCollapsed && (
+                    <span>{t(route.labelKey as any)}</span>
+                  )}
                 </div>
-              </Link>
+              </a>
             );
           })}
         </div>

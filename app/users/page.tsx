@@ -46,9 +46,9 @@ import { useTranslations } from "next-intl"
 
 interface User {
   id: string
-  username: string
+  loginName: string
+  username: string | null
   email: string | null
-  realName: string | null
   role: string
   status: string
   createdAt: string
@@ -72,10 +72,10 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   
   const [formData, setFormData] = useState({
+    loginName: "",
     username: "",
     password: "",
     email: "",
-    realName: "",
     role: "user",
     status: "active",
   })
@@ -150,10 +150,10 @@ export default function UsersPage() {
 
       setCreateDialogOpen(false)
       setFormData({
+        loginName: "",
         username: "",
         password: "",
         email: "",
-        realName: "",
         role: "user",
         status: "active",
       })
@@ -168,7 +168,7 @@ export default function UsersPage() {
   }
 
   const handleEdit = async () => {
-    if (!selectedUser) return
+    if (!selectedUser?.id) return
 
     try {
       const token = localStorage.getItem("token")
@@ -205,7 +205,7 @@ export default function UsersPage() {
   }
 
   const handleDelete = async () => {
-    if (!selectedUser) return
+    if (!selectedUser?.id) return
 
     try {
       const token = localStorage.getItem("token")
@@ -242,10 +242,10 @@ export default function UsersPage() {
   const openEditDialog = (user: User) => {
     setSelectedUser(user)
     setFormData({
-      username: user.username,
+      loginName: user.loginName,
+      username: user.username || "",
       password: "",
       email: user.email || "",
-      realName: user.realName || "",
       role: user.role,
       status: user.status,
     })
@@ -292,16 +292,16 @@ export default function UsersPage() {
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="create-username">
-                    {t('username')} <span className="text-red-500">*</span>
+                  <Label htmlFor="create-loginName">
+                    {t('loginName')} <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="create-username"
-                    value={formData.username}
+                    id="create-loginName"
+                    value={formData.loginName}
                     onChange={(e) =>
-                      setFormData({ ...formData, username: e.target.value })
+                      setFormData({ ...formData, loginName: e.target.value })
                     }
-                    placeholder={t('usernamePlaceholder')}
+                    placeholder={t('loginNamePlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">
@@ -319,6 +319,17 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="create-username">{t('username')}</Label>
+                  <Input
+                    id="create-username"
+                    value={formData.username}
+                    onChange={(e) =>
+                      setFormData({ ...formData, username: e.target.value })
+                    }
+                    placeholder={t('optional')}
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="create-email">{t('email')}</Label>
                   <Input
                     id="create-email"
@@ -326,17 +337,6 @@ export default function UsersPage() {
                     value={formData.email}
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder={t('optional')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create-realName">{t('realName')}</Label>
-                  <Input
-                    id="create-realName"
-                    value={formData.realName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, realName: e.target.value })
                     }
                     placeholder={t('optional')}
                   />
@@ -423,13 +423,13 @@ export default function UsersPage() {
         </div>
 
         {/* 用户表格 */}
-        <div className="border rounded-lg">
+        <div className="border border-[#e5e7eb] dark:border-[#4b5563] rounded-lg [&_tr]:border-[#e5e7eb] [&_tr]:dark:border-[#4b5563]">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>{t('loginName')}</TableHead>
                 <TableHead>{t('username')}</TableHead>
                 <TableHead>{t('email')}</TableHead>
-                <TableHead>{t('realName')}</TableHead>
                 <TableHead>{t('role')}</TableHead>
                 <TableHead>{t('status')}</TableHead>
                 <TableHead>{t('createdAt')}</TableHead>
@@ -447,9 +447,9 @@ export default function UsersPage() {
               ) : (
                 users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.username}</TableCell>
+                    <TableCell className="font-medium">{user.loginName}</TableCell>
+                    <TableCell>{user.username || "-"}</TableCell>
                     <TableCell>{user.email || "-"}</TableCell>
-                    <TableCell>{user.realName || "-"}</TableCell>
                     <TableCell>
                       <Badge variant={user.role === "admin" ? "default" : "secondary"}>
                         {user.role === "admin" ? t('roleAdmin') : t('roleUser')}
@@ -502,12 +502,14 @@ export default function UsersPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-username">{t('username')}</Label>
+                <Label htmlFor="edit-loginName">
+                  {t('loginName')} <span className="text-red-500">*</span>
+                </Label>
                 <Input
-                  id="edit-username"
-                  value={formData.username}
+                  id="edit-loginName"
+                  value={formData.loginName}
                   onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
+                    setFormData({ ...formData, loginName: e.target.value })
                   }
                 />
               </div>
@@ -524,6 +526,17 @@ export default function UsersPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="edit-username">{t('username')}</Label>
+                <Input
+                  id="edit-username"
+                  value={formData.username}
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
+                  }
+                  placeholder={t('optional')}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="edit-email">{t('email')}</Label>
                 <Input
                   id="edit-email"
@@ -531,16 +544,6 @@ export default function UsersPage() {
                   value={formData.email}
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-realName">{t('realName')}</Label>
-                <Input
-                  id="edit-realName"
-                  value={formData.realName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, realName: e.target.value })
                   }
                 />
               </div>
@@ -597,7 +600,7 @@ export default function UsersPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
               <AlertDialogDescription>
-                {t('deleteDescription', { username: selectedUser?.username || '' })}
+                {t('deleteDescription', { loginName: selectedUser?.username || selectedUser?.loginName || '' })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

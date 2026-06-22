@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
 import { safeJsonParse, safeJsonStringify } from '@/lib/json-utils';
 
 // 清理节点中的执行结果（后端保护层）
@@ -71,6 +72,9 @@ export async function POST(
     // 清理 flowConfig 中的执行结果
     const cleanedFlowConfig = cleanExecutionFromFlowConfig(parsedFlowConfig);
 
+    const currentUser = await getCurrentUser(request);
+    const userId = currentUser?.user?.id ?? null;
+
     // 创建新的测试用例（名字前面加 "copy"）
     const newTestCase = await prisma.testCase.create({
       data: {
@@ -80,6 +84,7 @@ export async function POST(
         category: originalTestCase.category,
         tags: safeJsonStringify(parsedTags),
         flowConfig: safeJsonStringify(cleanedFlowConfig),
+        ...(userId && { createdBy: userId, updatedBy: userId }),
         steps: {
           create: originalTestCase.steps.map((step: any, index: number) => {
             const parsedConfig = safeJsonParse(step.config);

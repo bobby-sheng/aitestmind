@@ -50,12 +50,16 @@ class VariableManager:
             提取的值
         """
         try:
-            # 🔧 修复：智能转换数组访问语法
-            # 将 "0.field" 或 "path.0.field" 格式转换为 "path[0].field"
+            # 🔧 智能转换数组访问语法
+            # 将纯数字路径段从点号分隔转为 JSONPath 的方括号索引
+            # 例如: "returnObject.0.0" -> "returnObject[0][0]"
+            #       "data.0.name"      -> "data[0].name"
+            #       "0.userId"         -> "[0].userId"
             import re
-            # 匹配模式：数字后面跟着点（作为路径分隔符）
-            # 例如: "0.userId" -> "[0].userId", "data.0.name" -> "data[0].name"
-            json_path = re.sub(r'(?:^|\.)(\d+)\.', r'[\1].', json_path)
+            # Step 1: ".N" → "[N]"（N 是完整路径段，后面跟 . 或末尾或 [）
+            json_path = re.sub(r'\.(\d+)(?=\.|$|\[)', r'[\1]', json_path)
+            # Step 2: 路径以数字开头时 "N.xxx" → "[N].xxx"
+            json_path = re.sub(r'^(\d+)(?=\.|$|\[)', r'[\1]', json_path)
             print(f"[变量提取] 原始路径转换后: {json_path}")
             
             # 如果不是以 $ 开头，自动添加
@@ -200,29 +204,61 @@ class VariableManager:
                 print(f"[变量解析] 字段路径: {field_path}")
                 
                 # 构建请求上下文（与 response 逻辑类似）
+                # 兼容历史/前端路径：
+                # - 前端曾使用 request.queryParams.xxx
+                # - 执行期请求数据使用 request.params（httpx 习惯）
+                # 因此同时提供 params 和 queryParams 两个别名，确保不破坏已有用例。
+                request_params = request_data.get('params', {}) or {}
                 request_context = {
                     'method': request_data.get('method'),
                     'url': request_data.get('url'),
                     'headers': request_data.get('headers', {}),
-                    'params': request_data.get('params', {})
+                    'params': request_params,
+                    'queryParams': request_params,
                 }
                 
                 # 如果有请求体，将其字段直接放到根层级（与 response.body 逻辑一致）
-                body = request_data.get('json')  # 请求体在 'json' 字段中
+                # 🚩 兼容多种请求体来源：
+                # - JSON:   request['json']
+                # - 表单:   request['data']  (form-data / x-www-form-urlencoded)
+                # - 原文:   request['content'] (raw)
+                # - 文件:   request['files']  (附加在 __files 字段中，避免与业务字段冲突)
+                body = request_data.get('json')
+                if body is None:
+                    body = request_data.get('data')
+                if body is None:
+                    body = request_data.get('content')
+                files = request_data.get('files')
+                
                 print(f"[变量解析] request body 类型: {type(body)}")
                 print(f"[变量解析] request body 内容: {body}")
+                print(f"[变量解析] request files 内容: {files}")
                 
                 if isinstance(body, dict):
-                    request_context['body'] = body
+                    # 为避免意外修改原始请求体，这里做一份浅拷贝
+                    merged_body = dict(body)
+                    # 如果存在文件字段，将其挂载到保留键 __files 下
+                    if files is not None and '__files' not in merged_body:
+                        merged_body['__files'] = files
+                    request_context['body'] = merged_body
                     # 也将 body 的字段提升到根层级，方便访问
                     # 但要避免覆盖已有字段
-                    for key, value in body.items():
+                    for key, value in merged_body.items():
                         if key not in request_context:
                             request_context[key] = value
-                    print(f"[变量解析] request body 是字典，已合并到上下文")
+                    print(f"[变量解析] request body 是字典，已合并到上下文（含文件信息）")
                 else:
-                    request_context['body'] = body
-                    print(f"[变量解析] request body 不是字典，直接赋值")
+                    # 非字典类型（如字符串 / bytes / 数组等）保持原有语义，
+                    # 只在有文件时额外挂一个字典包装，避免破坏现有用例。
+                    if files is not None:
+                        request_context['body'] = {
+                            '__raw': body,
+                            '__files': files,
+                        }
+                        print(f"[变量解析] request body 非字典，使用包装结构保存原始值和文件信息")
+                    else:
+                        request_context['body'] = body
+                        print(f"[变量解析] request body 不是字典，直接赋值")
                 
                 print(f"[变量解析] 最终 request_context: {request_context}")
                 
@@ -337,6 +373,10 @@ class VariableManager:
         if 'body' in config and config['body']:
             resolved['body'] = self._resolve_body(config['body'])
         
+        # 保留请求体内容类型
+        if 'contentType' in config:
+            resolved['contentType'] = config['contentType']
+        
         return resolved
     
     def _resolve_body(self, body: Any) -> Any:
@@ -351,8 +391,18 @@ class VariableManager:
         """
         if isinstance(body, dict):
             # 检查是否是 ParamValue 格式
-            if 'valueType' in body and 'value' in body:
-                # 这是 ParamValue，解析它
+            # 🚩 兼容 AI / 历史数据：
+            # - variable 类型可能只有 {valueType, variable}（没有 value）
+            # - fixed  类型可能只有 {valueType, value}
+            # 为避免误判普通业务字段（刚好叫 valueType），同时要求：
+            # 1) valueType 值必须是 fixed/variable
+            # 2) 且至少包含 value/variable/template 之一
+            if (
+                'valueType' in body
+                and body.get('valueType') in (ValueType.FIXED, ValueType.VARIABLE, 'fixed', 'variable')
+                and ('value' in body or 'variable' in body or 'template' in body)
+            ):
+                # 这是 ParamValue，解析它（支持 variable-only 结构）
                 resolved = self.resolve_param_value(body)
                 print(f"[Body解析] ParamValue -> {type(resolved)}: {resolved if not isinstance(resolved, (dict, list)) or len(str(resolved)) < 100 else str(resolved)[:100] + '...'}")
                 

@@ -1,0 +1,79 @@
+<!DOCTYPE html><html><head><style>
+
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  font-family: Arial, sans-serif;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+body { background: #FFFFFF; }
+</style></head><body>
+  <div style="background:#0F172A; padding:16pt 36pt;">
+    <p style="color:rgba(255,255,255,0.5); font-size:10pt; margin:0 0 4pt 0;">04 主要功能介绍</p>
+    <p style="color:#fff; font-size:22pt; font-weight:bold; margin:0;">用例编排 - 可视化流程设计</p>
+  </div>
+  <div style="display:flex; padding:16pt 36pt; gap:20pt;">
+    <div style="width:320pt;">
+      <p style="color:#1E293B; font-size:14pt; font-weight:bold; margin:0 0 10pt 0;">基于 React Flow 的可视化画布</p>
+      <p style="color:#64748B; font-size:10pt; margin:0 0 14pt 0; line-height:1.5;">通过拖拽式操作将不同类型的节点组合为完整的测试流程,支持节点间连线、参数传递和变量提取,大幅降低用例编排的技术门槛。</p>
+      <p style="color:#1E293B; font-size:12pt; font-weight:bold; margin:0 0 8pt 0;">节点类型</p>
+      
+    <div style="display:flex; align-items:center; margin:0 0 7pt 0;">
+      <div style="background:#10B981; width:10pt; height:10pt; border-radius:50%; margin:0 8pt 0 0;"></div>
+      <p style="color:#1E293B; font-size:10pt; margin:0;"><b>Start 节点</b> - 流程起始节点</p>
+    </div>
+  
+    <div style="display:flex; align-items:center; margin:0 0 7pt 0;">
+      <div style="background:#2563EB; width:10pt; height:10pt; border-radius:50%; margin:0 8pt 0 0;"></div>
+      <p style="color:#1E293B; font-size:10pt; margin:0;"><b>API 节点</b> - 调用API接口,支持参数化配置</p>
+    </div>
+  
+    <div style="display:flex; align-items:center; margin:0 0 7pt 0;">
+      <div style="background:#F59E0B; width:10pt; height:10pt; border-radius:50%; margin:0 8pt 0 0;"></div>
+      <p style="color:#1E293B; font-size:10pt; margin:0;"><b>Wait 节点</b> - 等待指定时间后继续执行</p>
+    </div>
+  
+    <div style="display:flex; align-items:center; margin:0 0 7pt 0;">
+      <div style="background:#0D9488; width:10pt; height:10pt; border-radius:50%; margin:0 8pt 0 0;"></div>
+      <p style="color:#1E293B; font-size:10pt; margin:0;"><b>Assertion 节点</b> - 对响应进行断言验证</p>
+    </div>
+  
+    <div style="display:flex; align-items:center; margin:0 0 7pt 0;">
+      <div style="background:#F97316; width:10pt; height:10pt; border-radius:50%; margin:0 8pt 0 0;"></div>
+      <p style="color:#1E293B; font-size:10pt; margin:0;"><b>Parallel 节点</b> - 并行分支执行多个步骤</p>
+    </div>
+  
+    <div style="display:flex; align-items:center; margin:0 0 7pt 0;">
+      <div style="background:#EF4444; width:10pt; height:10pt; border-radius:50%; margin:0 8pt 0 0;"></div>
+      <p style="color:#1E293B; font-size:10pt; margin:0;"><b>End 节点</b> - 流程结束节点</p>
+    </div>
+  
+    </div>
+    <div style="width:310pt;">
+      <p style="color:#1E293B; font-size:14pt; font-weight:bold; margin:0 0 10pt 0;">编排能力</p>
+      <div style="display:flex; flex-direction:column; gap:8pt;">
+        <div style="background:#F1F5F9; border-radius:6pt; padding:10pt 12pt;">
+          <p style="color:#1E293B; font-size:11pt; font-weight:bold; margin:0;">参数化配置</p>
+          <p style="color:#64748B; font-size:9pt; margin:2pt 0 0 0;">Headers / Query / Path / Body 参数灵活配置</p>
+        </div>
+        <div style="background:#F1F5F9; border-radius:6pt; padding:10pt 12pt;">
+          <p style="color:#1E293B; font-size:11pt; font-weight:bold; margin:0;">变量提取与传递</p>
+          <p style="color:#64748B; font-size:9pt; margin:2pt 0 0 0;">从响应中提取变量,供后续步骤引用</p>
+        </div>
+        <div style="background:#F1F5F9; border-radius:6pt; padding:10pt 12pt;">
+          <p style="color:#1E293B; font-size:11pt; font-weight:bold; margin:0;">断言验证</p>
+          <p style="color:#64748B; font-size:9pt; margin:2pt 0 0 0;">状态码 / 响应体 / Header / JSONPath 断言</p>
+        </div>
+        <div style="background:#F1F5F9; border-radius:6pt; padding:10pt 12pt;">
+          <p style="color:#1E293B; font-size:11pt; font-weight:bold; margin:0;">优先级管理</p>
+          <p style="color:#64748B; font-size:9pt; margin:2pt 0 0 0;">P0-P3 四级优先级,灵活管理用例执行策略</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute; bottom:8pt; right:20pt;">
+    <p style="color:#64748B; font-size:9pt; margin:0;">10 / 15</p>
+  </div>
+</body></html>

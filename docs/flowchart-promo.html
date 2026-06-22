@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 自动化测试流程图（宣传风）</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: radial-gradient(1200px 700px at 25% 15%, rgba(124, 58, 237, 0.22), transparent 60%),
+          radial-gradient(1200px 700px at 75% 18%, rgba(6, 182, 212, 0.18), transparent 60%),
+          radial-gradient(1000px 620px at 55% 88%, rgba(249, 115, 22, 0.14), transparent 58%),
+          linear-gradient(140deg, #050B1A, #071B3B 55%, #071225);
+        color: rgba(255, 255, 255, 0.86);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+      }
+      .wrap {
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .frame {
+        width: min(1400px, 96vw);
+        aspect-ratio: 16 / 9;
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow:
+          0 26px 72px rgba(0, 0, 0, 0.55),
+          0 0 0 1px rgba(255, 255, 255, 0.10) inset;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .hint {
+        width: min(1400px, 96vw);
+        margin-top: 14px;
+        font-size: 13px;
+        line-height: 1.55;
+        opacity: 0.72;
+      }
+      .hint code {
+        opacity: 0.9;
+      }
+      object {
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="frame">
+        <object data="./flowchart-promo.svg" type="image/svg+xml"></object>
+      </div>
+      <div class="hint">
+        导出 PNG：用浏览器打开本页后打印为图片，或用命令行（需要安装 sharp）：
+        <code>node -e "require('sharp')('docs/flowchart-promo.svg').png().toFile('docs/flowchart-promo.png')"</code>
+      </div>
+    </div>
+  </body>
+</html>
+

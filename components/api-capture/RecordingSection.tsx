@@ -249,7 +249,7 @@ export function RecordingSection({
             </div>
 
             <div className="space-y-3">
-              <div className="p-3 bg-background rounded-lg border">
+              <div className="p-3 bg-background rounded-lg border border-[#e5e7eb] dark:border-[#4b5563]">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-sm text-foreground">Chrome / Edge</h4>
                   <Button
@@ -272,7 +272,7 @@ export function RecordingSection({
                 </p>
               </div>
 
-              <div className="p-3 bg-background rounded-lg border">
+              <div className="p-3 bg-background rounded-lg border border-[#e5e7eb] dark:border-[#4b5563]">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-sm text-foreground">Firefox</h4>
                   <Button
@@ -312,7 +312,7 @@ export function RecordingSection({
   return (
     <>
       {/* 录制卡片 */}
-      <Card className="hover:shadow-md transition-shadow">
+      <Card className="hover:shadow-md transition-shadow border-[#e5e7eb] dark:border-[#4b5563]">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-lg">
@@ -363,7 +363,7 @@ export function RecordingSection({
           onClick={() => !isLoading && setShowModal(false)}
         >
           <Card 
-            className="w-full max-w-md shadow-2xl border-2 bg-background"
+            className="w-full max-w-md shadow-2xl border-2 border-[#e5e7eb] dark:border-[#4b5563] bg-background"
             onClick={(e) => e.stopPropagation()}
           >
             <CardHeader className="space-y-3 pb-4">
@@ -392,7 +392,7 @@ export function RecordingSection({
                     className={`p-4 border-2 rounded-lg text-left transition-all ${
                       captureMode === 'browser'
                         ? 'border-primary bg-primary/5'
-                        : 'border-gray-200 hover:border-gray-300'
+                        : 'border-[#e5e7eb] dark:border-[#4b5563] hover:border-[#d1d5db] dark:hover:border-[#6b7280]'
                     }`}
                     disabled={isLoading}
                   >
@@ -408,7 +408,7 @@ export function RecordingSection({
                     className={`p-4 border-2 rounded-lg text-left transition-all ${
                       captureMode === 'proxy'
                         ? 'border-primary bg-primary/5'
-                        : 'border-gray-200 hover:border-gray-300'
+                        : 'border-[#e5e7eb] dark:border-[#4b5563] hover:border-[#d1d5db] dark:hover:border-[#6b7280]'
                     }`}
                     disabled={isLoading}
                   >
@@ -424,7 +424,7 @@ export function RecordingSection({
                     className={`p-4 border-2 rounded-lg text-left transition-all ${
                       captureMode === 'mitmproxy'
                         ? 'border-primary bg-primary/5'
-                        : 'border-gray-200 hover:border-gray-300'
+                        : 'border-[#e5e7eb] dark:border-[#4b5563] hover:border-[#d1d5db] dark:hover:border-[#6b7280]'
                     }`}
                     disabled={isLoading}
                   >
@@ -458,7 +458,7 @@ export function RecordingSection({
                         {t('playwrightRequiredDesc')}
                       </p>
                       <div className="relative">
-                        <code className="block p-3 pr-12 bg-secondary/80 text-primary rounded text-sm font-mono overflow-x-auto border border-border">
+                        <code className="block p-3 pr-12 bg-secondary/80 text-primary rounded text-sm font-mono overflow-x-auto border border-[#e5e7eb] dark:border-[#4b5563]">
                           {installCommand}
                         </code>
                         <Button

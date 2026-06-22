@@ -1322,7 +1322,8 @@ class Database:
             cursor.execute(
                 """
                 UPDATE TestSuite
-                SET scheduleStatus = 'disabled'
+                SET scheduleStatus = 'disabled',
+                    nextRunTime = NULL
                 WHERE id = ?
                 """,
                 (suite_id,)

@@ -17,6 +17,28 @@ from logger_config import get_logger
 # 获取日志器
 logger = get_logger('executor')
 
+def _sanitize_outgoing_headers(headers: Any) -> None:
+    """
+    httpx 会自动计算 Content-Length；手动设置且与最终请求体字节数不一致时，
+    会触发协议错误（常见表现：LocalProtocolError）。
+    为保证执行稳定性，发请求前统一剥离 Content-Length（大小写不敏感）。
+    """
+    if not headers:
+        return
+    try:
+        keys = list(headers.keys())
+    except Exception:
+        return
+    for k in keys:
+        if isinstance(k, str) and k.lower() == 'content-length':
+            try:
+                headers.pop(k, None)
+            except Exception:
+                try:
+                    del headers[k]
+                except Exception:
+                    pass
+
 
 class TestExecutor:
     """测试执行器 - 负责执行测试用例"""
@@ -516,13 +538,24 @@ class TestExecutor:
             url = api_data.url
             print(f"[API执行] 节点配置的URL: {url}")
             
-            # 如果节点URL不包含占位符且数据库中有完整URL，使用数据库的
-            # 但如果包含占位符（如 {id}），则保留节点配置的URL
-            if self.database and api_data.apiId and '{' not in url:
+            # 从数据库获取完整URL的scheme+netloc（host/port）
+            # 无论节点URL是否包含占位符（如 {id}），都尝试拼接
+            if self.database and api_data.apiId:
                 api_info = self.database.get_api_by_id(api_data.apiId)
                 if api_info and api_info.get('url'):
-                    print(f"[API执行] 数据库URL: {api_info['url']}")
-                    url = api_info['url']
+                    db_url = api_info['url']
+                    print(f"[API执行] 数据库URL: {db_url}")
+
+                    if '{' in url:
+                        # 路径包含占位符：使用数据库URL的scheme+netloc（host/port），保留节点的参数化路径
+                        from urllib.parse import urlparse as _up, urlunparse as _uup
+                        parsed_db = _up(db_url)
+                        parsed_node = _up(url)
+                        url = _uup((parsed_db.scheme, parsed_db.netloc, parsed_node.path, '', '', ''))
+                        print(f"[API执行] 拼接数据库base+节点路径: {url}")
+                    else:
+                        # 路径不包含占位符：直接使用数据库完整URL（原逻辑不变）
+                        url = db_url
             
             # 解析请求配置
             resolved_config = {}
@@ -626,9 +659,63 @@ class TestExecutor:
             if query_params:
                 request_data['params'] = query_params
             
-            # 添加请求体
-            if resolved_config.get('body'):
-                request_data['json'] = resolved_config['body']
+            # 添加请求体 - 根据 contentType 选择不同的发送方式
+            body_data = resolved_config.get('body')
+            content_type = resolved_config.get('contentType', 'json')  # 默认为 JSON
+            
+            if body_data:
+                if content_type == 'form-data':
+                    # multipart/form-data 格式
+                    # 将 body 数据转换为 files 和 data 参数
+                    form_data = {}
+                    files_data = {}
+                    
+                    for key, value in body_data.items():
+                        if isinstance(value, dict) and value.get('_isFile'):
+                            # 如果是文件类型（预留），将来支持文件上传
+                            files_data[key] = value.get('content', '')
+                        else:
+                            form_data[key] = str(value) if value is not None else ''
+                    
+                    if files_data:
+                        request_data['files'] = files_data
+                    request_data['data'] = form_data
+                    
+                    # 移除 Content-Type 头，让 httpx 自动设置 multipart/form-data
+                    if 'Content-Type' in headers:
+                        del headers['Content-Type']
+                    if 'content-type' in headers:
+                        del headers['content-type']
+                    
+                    print(f"[API执行] 使用 form-data 格式发送请求体: {form_data}")
+                    
+                elif content_type == 'x-www-form-urlencoded':
+                    # application/x-www-form-urlencoded 格式
+                    form_data = {}
+                    for key, value in body_data.items():
+                        form_data[key] = str(value) if value is not None else ''
+                    
+                    request_data['data'] = form_data
+                    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    
+                    print(f"[API执行] 使用 x-www-form-urlencoded 格式发送请求体: {form_data}")
+                    
+                elif content_type == 'raw':
+                    # 原始文本格式
+                    if isinstance(body_data, str):
+                        request_data['content'] = body_data.encode('utf-8')
+                    else:
+                        request_data['content'] = str(body_data).encode('utf-8')
+                    
+                    if 'Content-Type' not in headers and 'content-type' not in headers:
+                        headers['Content-Type'] = 'text/plain'
+                    
+                    print(f"[API执行] 使用 raw 格式发送请求体")
+                    
+                else:
+                    # 默认 JSON 格式
+                    request_data['json'] = body_data
+                    print(f"[API执行] 使用 JSON 格式发送请求体")
             
             # 用于日志显示的请求数据（包含完整 URL）
             result.request = {
@@ -636,7 +723,9 @@ class TestExecutor:
                 'url': display_url,  # 显示完整 URL
                 'headers': headers,
                 'params': query_params,
-                'json': request_data.get('json')
+                'json': request_data.get('json'),
+                'data': request_data.get('data'),  # form-data 和 x-www-form-urlencoded 的数据
+                'files': request_data.get('files')  # form-data 的文件数据
             }
             
             # ========== 详细调试信息 ==========
@@ -675,10 +764,16 @@ class TestExecutor:
                     print(f"  {key}: {value}")
             
             # 显示请求体
+            import json
             if result.request.get('json'):
-                print(f"\n[请求调试] 请求体:")
-                import json
+                print(f"\n[请求调试] 请求体 (JSON):")
                 print(f"  {json.dumps(result.request['json'], indent=2, ensure_ascii=False)}")
+            if result.request.get('data'):
+                print(f"\n[请求调试] 请求体 (表单数据):")
+                print(f"  {json.dumps(result.request['data'], indent=2, ensure_ascii=False)}")
+            if result.request.get('files'):
+                print(f"\n[请求调试] 请求体 (文件):")
+                print(f"  {json.dumps(result.request['files'], indent=2, ensure_ascii=False)}")
             
             print(f"{'='*80}\n")
             
@@ -686,11 +781,33 @@ class TestExecutor:
             if step_execution_id and self.database:
                 try:
                     request_log = f'{result.request["method"]} {display_url}'
+                    # 记录 JSON 格式的请求体
                     if result.request.get('json'):
                         body_str = json.dumps(result.request["json"], ensure_ascii=False, indent=2)
                         if len(body_str) > 500:
                             body_str = body_str[:500] + '...(已截断)'
-                        request_log += f'\n请求体: {body_str}'
+                        request_log += f'\n请求体 (JSON): {body_str}'
+                    # 记录表单数据
+                    if result.request.get('data'):
+                        data_str = json.dumps(result.request["data"], ensure_ascii=False, indent=2)
+                        if len(data_str) > 500:
+                            data_str = data_str[:500] + '...(已截断)'
+                        request_log += f'\n请求体 (表单数据): {data_str}'
+                    # 记录文件数据
+                    if result.request.get('files'):
+                        files_str = json.dumps(result.request["files"], ensure_ascii=False, indent=2)
+                        if len(files_str) > 500:
+                            files_str = files_str[:500] + '...(已截断)'
+                        request_log += f'\n请求体 (文件): {files_str}'
+                    
+                    # 构建请求体对象，包含所有类型的数据
+                    request_body = {}
+                    if result.request.get('json'):
+                        request_body['json'] = result.request.get('json')
+                    if result.request.get('data'):
+                        request_body['data'] = result.request.get('data')
+                    if result.request.get('files'):
+                        request_body['files'] = result.request.get('files')
                     
                     self.database.create_execution_log(
                         level='info',
@@ -706,7 +823,7 @@ class TestExecutor:
                             'method': result.request['method'],
                             'headers': dict(headers),
                             'params': result.request.get('params'),
-                            'body': result.request.get('json')
+                            'body': request_body if request_body else None
                         }
                     )
                 except Exception as e:
@@ -720,6 +837,9 @@ class TestExecutor:
             print(f"[请求调试] 🚀 发送请求到: {display_url}")
             print(f"[请求调试] 使用的认证: Cookie头={bool(headers.get('Cookie'))}, Authorization头={bool(headers.get('Authorization'))}")
             
+            # 避免手动 Content-Length 导致协议错误（LocalProtocolError）
+            _sanitize_outgoing_headers(headers)
+
             # 记录请求开始时间
             request_start_time = datetime.now()
             response = await self.client.request(**request_data)
@@ -734,7 +854,8 @@ class TestExecutor:
             response_data = {
                 'status': response.status_code,
                 'headers': dict(response.headers),
-                'body': None
+                'body': None,
+                'responseTime': int(request_duration * 1000)  # 响应时间（毫秒）
             }
             
             # 检查响应中的Set-Cookie
@@ -774,12 +895,18 @@ class TestExecutor:
                     print(f"[响应日志] 准备保存响应数据 - stepId: {step_execution_id}, status: {response_data['status']}")
                     
                     # 先更新步骤执行记录
+                    # 对于form-data和x-www-form-urlencoded，requestBody应该保存data字段
+                    # 对于JSON，requestBody保存json字段
+                    request_body = request_data.get('json')
+                    if not request_body and request_data.get('data'):
+                        request_body = request_data.get('data')
+                    
                     self.database.update_step_execution(
                         step_execution_id,
                         requestUrl=request_data['url'],
                         requestMethod=request_data['method'],
                         requestHeaders=request_data.get('headers'),
-                        requestBody=request_data.get('json'),
+                        requestBody=request_body,
                         requestParams=request_data.get('params'),
                         responseStatus=response_data['status'],
                         responseHeaders=response_data.get('headers'),
@@ -1628,13 +1755,30 @@ class TestExecutor:
                     api_config.requestConfig.dict() if hasattr(api_config.requestConfig, 'dict') else api_config.requestConfig
                 )
             
-            # 构建 URL
+            # 构建 URL - 先从数据库获取完整URL的scheme+netloc
             url = api_config.url
+            if self.database and api_config.apiId:
+                api_info = self.database.get_api_by_id(api_config.apiId)
+                if api_info and api_info.get('url'):
+                    db_url = api_info['url']
+                    print(f"[并发API] 数据库URL: {db_url}")
+
+                    if '{' in url:
+                        # 路径包含占位符：使用数据库URL的scheme+netloc，保留参数化路径
+                        from urllib.parse import urlparse as _up2, urlunparse as _uup2
+                        parsed_db = _up2(db_url)
+                        parsed_node = _up2(url)
+                        url = _uup2((parsed_db.scheme, parsed_db.netloc, parsed_node.path, '', '', ''))
+                        print(f"[并发API] 拼接数据库base+节点路径: {url}")
+                    else:
+                        # 路径不包含占位符：直接使用数据库完整URL
+                        url = db_url
+
             if resolved_config.get('pathParams'):
                 url = variable_manager.replace_url_params(
                     url, resolved_config['pathParams']
                 )
-            
+
             # 在URL替换后打印日志，显示替换后的实际URL
             print(f"[并发API] 开始执行: {api_config.name or api_config.id} ({api_config.method} {url})")
             
@@ -1671,20 +1815,60 @@ class TestExecutor:
             # 清空客户端的cookie jar
             self.client.cookies.clear()
             
+            # 构建请求参数 - 根据 contentType 选择不同的发送方式
+            request_kwargs = {
+                'method': api_config.method.upper(),
+                'url': url,
+                'headers': headers,
+                'params': resolved_config.get('queryParams', {}),
+            }
+            
+            body_data = resolved_config.get('body')
+            content_type = resolved_config.get('contentType', 'json')
+            
+            if body_data:
+                if content_type == 'form-data':
+                    form_data = {}
+                    for key, value in body_data.items():
+                        form_data[key] = str(value) if value is not None else ''
+                    request_kwargs['data'] = form_data
+                    # 移除 Content-Type 头，让 httpx 自动设置 multipart/form-data
+                    headers.pop('Content-Type', None)
+                    headers.pop('content-type', None)
+                    print(f"[并发API] 使用 form-data 格式发送请求体")
+                elif content_type == 'x-www-form-urlencoded':
+                    form_data = {}
+                    for key, value in body_data.items():
+                        form_data[key] = str(value) if value is not None else ''
+                    request_kwargs['data'] = form_data
+                    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    print(f"[并发API] 使用 x-www-form-urlencoded 格式发送请求体")
+                elif content_type == 'raw':
+                    if isinstance(body_data, str):
+                        request_kwargs['content'] = body_data.encode('utf-8')
+                    else:
+                        request_kwargs['content'] = str(body_data).encode('utf-8')
+                    if 'Content-Type' not in headers and 'content-type' not in headers:
+                        headers['Content-Type'] = 'text/plain'
+                    print(f"[并发API] 使用 raw 格式发送请求体")
+                else:
+                    request_kwargs['json'] = body_data
+                    print(f"[并发API] 使用 JSON 格式发送请求体")
+            
+            # 避免手动 Content-Length 导致协议错误（LocalProtocolError）
+            _sanitize_outgoing_headers(headers)
+
             # 发送请求
-            response = await self.client.request(
-                method=api_config.method.upper(),
-                url=url,
-                headers=headers,
-                params=resolved_config.get('queryParams', {}),
-                json=resolved_config.get('body')
-            )
+            request_start_time = datetime.now()
+            response = await self.client.request(**request_kwargs)
+            request_duration = (datetime.now() - request_start_time).total_seconds()
             
             # 解析响应
             response_data = {
                 'status': response.status_code,
                 'headers': dict(response.headers),
-                'body': None
+                'body': None,
+                'responseTime': int(request_duration * 1000)  # 响应时间（毫秒）
             }
             
             try:

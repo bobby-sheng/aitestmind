@@ -70,7 +70,7 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
 
   if (collapsed) {
     return (
-      <div className="w-12 h-full bg-muted/50 border-r flex flex-col items-center py-4 gap-4">
+      <div className="w-12 h-full bg-muted/50 border-r border-[#e5e7eb] dark:border-[#4b5563] flex flex-col items-center py-4 gap-4">
         <Button
           variant="ghost"
           size="sm"
@@ -105,9 +105,9 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
   }
 
   return (
-    <div className="w-64 h-full bg-muted/50 border-r flex flex-col">
+    <div className="w-64 h-full bg-muted/50 border-r border-[#e5e7eb] dark:border-[#4b5563] flex flex-col">
       {/* 头部 */}
-      <div className="flex items-center justify-between p-4 border-b bg-background">
+      <div className="flex items-center justify-between p-4 border-b border-[#e5e7eb] dark:border-[#4b5563] bg-background">
         <h3 className="font-semibold text-sm">{t('title')}</h3>
         <Button
           variant="ghost"

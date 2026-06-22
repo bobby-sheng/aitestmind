@@ -62,9 +62,8 @@ export async function validateSession(token: string) {
     where: { id: session.userId },
     select: {
       id: true,
-      username: true,
+      loginName: true,
       email: true,
-      realName: true,
       role: true,
       status: true,
       createdAt: true,
